@@ -998,7 +998,7 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
                 关联健康经历
                 <select
                   name="history_id"
-                  value={editDocument?.history_id || linkedHistory}
+                  value={editDocument ? editDocument.history_id || "" : linkedHistory}
                   onChange={(e) => {
                     if (editDocument)
                       setEditDocument({
