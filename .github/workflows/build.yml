@@ -62,7 +62,9 @@ jobs:
           context: .
           load: true
           tags: eir:ci
-          cache-from: type=gha,scope=integration
+          cache-from: |
+            type=gha,scope=integration-17
+            type=gha,scope=integration-18
           cache-to: type=gha,mode=max,scope=integration-${{ matrix.postgres }}
       - name: Isolated legacy, lifecycle, body, health and MCP acceptance
         run: |

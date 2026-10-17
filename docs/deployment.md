@@ -2,6 +2,8 @@
 
 Eir 面向受信内网，默认无登录；复用现有 MQTT。支持内置 PostgreSQL 或外部 PostgreSQL。React 资源随服务提供，不依赖 CDN。
 
+镜像源码构建使用 Docker BuildKit/buildx，前端和 Go 编译在构建机原生架构运行，再交叉编译目标程序。
+
 ## 默认 Compose
 
 ```sh
