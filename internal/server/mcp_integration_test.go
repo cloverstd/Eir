@@ -1,9 +1,11 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"image"
 	"io"
 	"net/http"
 	"os"
@@ -86,6 +88,38 @@ func TestMCPIntegration(t *testing.T) {
 		}
 	}
 	documents := fetch("health/documents?member_id=" + member).(map[string]any)["items"].([]any)
+	for _, entry := range documents {
+		doc := entry.(map[string]any)
+		if doc["filename"] != "report.pdf" {
+			continue
+		}
+		response, err := http.Get(base + "/api/v1/documents/" + doc["id"].(string) + "/pages/1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, err := io.ReadAll(response.Body)
+		response.Body.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		raster, _, err := image.Decode(bytes.NewReader(data))
+		if err != nil {
+			t.Fatal(err)
+		}
+		ink := 0
+		bounds := raster.Bounds()
+		for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+			for x := bounds.Min.X; x < bounds.Max.X; x++ {
+				r, g, b, _ := raster.At(x, y).RGBA()
+				if r < 50000 || g < 50000 || b < 50000 {
+					ink++
+				}
+			}
+		}
+		if ink < 20 {
+			t.Fatal("Text PDF rendered blank; runtime fonts are missing")
+		}
+	}
 	doc := documents[0].(map[string]any)
 	call("read_document_text", map[string]any{"id": doc["id"]})
 	result := call("read_document_pages", map[string]any{"id": doc["id"], "page": 1})
