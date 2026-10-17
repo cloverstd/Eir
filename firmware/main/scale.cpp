@@ -125,6 +125,7 @@ int characteristic_cb(uint16_t,const ble_gatt_error*e,const ble_gatt_chr*chr,voi
 int descriptor_cb(uint16_t,const ble_gatt_error*e,uint16_t chr,const ble_gatt_dsc*dsc,void*arg){auto &c=*static_cast<ScaleConnection*>(arg);if(e->status){c.result=e->status==BLE_HS_EDONE?0:e->status;xSemaphoreGive(c.done);}else{inventory(c,"dsc",&dsc->uuid.u,dsc->handle);if(chr==c.notify&&short_uuid(&dsc->uuid.u)==0x2902)c.cccd=dsc->handle;}return 0;}
 int write_cb(uint16_t,const ble_gatt_error*e,ble_gatt_attr*,void*arg){auto &c=*static_cast<ScaleConnection*>(arg);c.result=e->status;xSemaphoreGive(c.done);return 0;}
 void disconnect(ScaleConnection&c){
+  afu_sample_signals();
   if(c.conn!=BLE_HS_CONN_HANDLE_NONE){ble_gap_terminate(c.conn,BLE_ERR_REM_USER_CONN_TERM);for(int n=0;n<40&&c.conn!=BLE_HS_CONN_HANDLE_NONE;++n)vTaskDelay(pdMS_TO_TICKS(50));}
   xQueueReset(c.notices);c.early_adc.clear();c.load_seen=false;
 }
@@ -210,6 +211,7 @@ void worker(void*arg){
     if(!c.cycle.weight.empty()&&resume_until>0&&esp_timer_get_time()>=resume_until){if(!flush_cycle(d,c.cycle)||!clear_cycle(d)){c.busy=false;continue;}c.cycle={};}
     bool ok=connect(c,address);
     if(ok){
+      afu_sample_signals();
       bool resuming=!c.cycle.weight.empty();
       while(c.conn!=BLE_HS_CONN_HANDLE_NONE&&!upgrading&&!lifecycle_busy&&collection_enabled()){
         bool assigned=false;for(auto current:devices())if(current.id==d.id&&current.enabled&&current.profile==afu::profile)assigned=true;if(!assigned)break;
@@ -277,6 +279,25 @@ void afu_discover(const ble_gap_disc_desc &disc){
 }
 void afu_scan_items(cJSON*array){std::lock_guard<std::mutex> lock(scales_mutex);for(const auto &item:seen_scales){const auto &s=item.second;if(esp_timer_get_time()-s.when>60000000||s.hardware.empty()||s.name.rfind("AFU-WL",0)!=0)continue;auto j=cJSON_CreateObject();cJSON_AddStringToObject(j,"address",address_string(s.address).c_str());cJSON_AddNumberToObject(j,"address_type",s.address.type);cJSON_AddStringToObject(j,"name",s.name.c_str());cJSON_AddStringToObject(j,"profile",afu::profile);cJSON_AddStringToObject(j,"hardware_id",s.hardware.c_str());cJSON_AddNumberToObject(j,"rssi",s.rssi);cJSON_AddItemToArray(array,j);}}
 void afu_start(){for(size_t i=0;i<connections.size();++i){auto &c=connections[i];c.done=xSemaphoreCreateBinary();c.notices=xQueueCreate(12,sizeof(Notice));xTaskCreate(worker,i?"afu_scale_2":"afu_scale_1",6144,reinterpret_cast<void*>(i),4,nullptr);}}
+void afu_sample_signals(){
+  auto assigned=devices();std::array<std::pair<std::string,uint16_t>,2> links;
+  {
+    std::lock_guard<std::mutex> lock(scales_mutex);
+    for(const auto &d:assigned){
+      if(!d.enabled||d.profile!=afu::profile)continue;
+      for(const auto &p:seen_scales)if(!d.hardware_id.empty()&&strcasecmp(p.second.hardware.c_str(),d.hardware_id.c_str())==0)
+        signal_cache.record(d.id,{p.second.rssi,p.second.when/1000,false,"advertisement"});
+    }
+    for(size_t i=0;i<connections.size();++i)links[i]={connections[i].device_id,connections[i].conn.load()};
+  }
+  for(size_t i=0;i<links.size();++i){
+    const auto &link=links[i];if(link.second==BLE_HS_CONN_HANDLE_NONE||link.first.empty())continue;
+    int8_t rssi=127;if(ble_gap_conn_rssi(link.second,&rssi))continue;
+    std::lock_guard<std::mutex> lock(scales_mutex);
+    if(connections[i].conn==link.second&&connections[i].device_id==link.first)
+      signal_cache.record(link.first,{rssi,esp_timer_get_time()/1000,true,"connection"});
+  }
+}
 void afu_pause(){for(auto &c:connections)while(c.busy)vTaskDelay(pdMS_TO_TICKS(50));}
 bool afu_connected(const std::string&device){std::lock_guard<std::mutex> lock(scales_mutex);for(auto &c:connections)if(c.device_id==device&&c.conn!=BLE_HS_CONN_HANDLE_NONE)return true;return false;}
 bool afu_lifecycle(const Device&d,const std::string&type){

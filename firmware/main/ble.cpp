@@ -311,6 +311,7 @@ bool begin(const Device &d, bool pairing) {
   if(connect_rc){error("BLE connect start error="+std::to_string(connect_rc));return false;}
   if(!wait(17000)){ble_gap_conn_cancel();return false;}
   initiation.reset();
+  ble_sample_signals();
   cuff.stage="security";
   ble_gap_conn_desc descriptor{};
   if(ble_gap_conn_find(cuff.conn,&descriptor)){error("BLE connection disappeared");return false;}
@@ -382,6 +383,7 @@ bool begin(const Device &d, bool pairing) {
   return true;
 }
 void end() {
+  ble_sample_signals();
   if (cuff.conn != BLE_HS_CONN_HANDLE_NONE) {
     std::vector<uint8_t> r;
     exchange(omron::frame(0x0f00, 0, 0), 0x8f00, 0, r);
@@ -650,6 +652,24 @@ void worker(void *) {
 }
 } // namespace
 bool ble_connected(const std::string &id){std::lock_guard<std::mutex> lock(bm);return cuff.device_id==id&&cuff.conn!=BLE_HS_CONN_HANDLE_NONE;}
+void ble_sample_signals(){
+  auto assigned=devices();std::string connected_id;uint16_t handle;
+  {
+    std::lock_guard<std::mutex> lock(bm);
+    connected_id=cuff.device_id;handle=cuff.conn;
+    for(const auto &d:assigned){
+      if(!d.enabled||d.profile==afu::profile)continue;
+      for(const auto &p:seen)if(strcasecmp(p.first.c_str(),d.address.c_str())==0&&p.second.addr.type==d.address_type)
+        signal_cache.record(d.id,{p.second.rssi,p.second.when/1000,false,"advertisement"});
+    }
+  }
+  // HCI reads can wait for the host task; never hold its GAP callback mutex.
+  if(handle==BLE_HS_CONN_HANDLE_NONE)return;
+  int8_t rssi=127;if(ble_gap_conn_rssi(handle,&rssi))return;
+  std::lock_guard<std::mutex> lock(bm);
+  if(cuff.conn==handle&&cuff.device_id==connected_id)
+    signal_cache.record(connected_id,{rssi,esp_timer_get_time()/1000,true,"connection"});
+}
 void ble_resume_scan(){scan();}
 std::string ble_scan_json() {
   std::lock_guard<std::mutex> l(bm);

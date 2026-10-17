@@ -4,9 +4,31 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestHistoryRouteFallback(t *testing.T) {
+	dir := t.TempDir()
+	if e := os.WriteFile(filepath.Join(dir, "index.html"), []byte("<html>Eir SPA</html>"), 0600); e != nil {
+		t.Fatal(e)
+	}
+	app := New(nil, "http://localhost", t.TempDir(), dir).Handler()
+	for _, tt := range []struct {
+		path   string
+		status int
+	}{
+		{"/data?page=2", 200}, {"/members/example/documents", 200}, {"/body", 200}, {"/assets/missing.js", 404}, {"/api/v1/missing", 404},
+	} {
+		w := httptest.NewRecorder()
+		app.ServeHTTP(w, httptest.NewRequest("GET", tt.path, nil))
+		if w.Code != tt.status {
+			t.Fatalf("%s: %d", tt.path, w.Code)
+		}
+	}
+}
 
 func TestFiltersRejectBadDates(t *testing.T) {
 	for _, q := range []string{"from=tomorrow", "from=2026-10-17T00:00:00Z&to=2026-10-16T00:00:00Z", "member_id=anything"} {

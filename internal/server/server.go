@@ -29,10 +29,22 @@ type Server struct {
 	DocumentMaxBytes               int64
 	mu                             sync.Mutex
 	listeners                      map[chan struct{}]bool
+	signalListeners                map[chan struct{}]bool
 }
 
 func New(s *store.Store, public, dir, web string) *Server {
-	return &Server{Store: s, PublicURL: strings.TrimRight(public, "/"), FirmwareDir: dir, WebDir: web, DocumentDir: filepath.Join(filepath.Dir(dir), "documents"), DocumentMaxBytes: 25 << 20, listeners: make(map[chan struct{}]bool)}
+	return &Server{Store: s, PublicURL: strings.TrimRight(public, "/"), FirmwareDir: dir, WebDir: web, DocumentDir: filepath.Join(filepath.Dir(dir), "documents"), DocumentMaxBytes: 25 << 20, listeners: make(map[chan struct{}]bool), signalListeners: make(map[chan struct{}]bool)}
+}
+
+func (s *Server) SignalsChanged() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for ch := range s.signalListeners {
+		select {
+		case ch <- struct{}{}:
+		default:
+		}
+	}
 }
 func ID() string {
 	var b [16]byte
@@ -161,6 +173,8 @@ func (s *Server) Handler() http.Handler {
 	})
 	m.HandleFunc("POST /api/v1/ota-jobs", s.ota)
 	m.HandleFunc("GET /api/v1/openapi.json", s.openapi)
+	m.HandleFunc("GET /api/v1/signals/latest", s.signalsLatest)
+	m.HandleFunc("GET /api/v1/signals/history", s.signalsHistory)
 	m.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		respond(w, 404, map[string]string{"error": "API not found"})
 	})
@@ -216,10 +230,12 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("X-Accel-Buffering", "no")
 	ch := make(chan struct{}, 1)
+	signals := make(chan struct{}, 1)
 	s.mu.Lock()
 	s.listeners[ch] = true
+	s.signalListeners[signals] = true
 	s.mu.Unlock()
-	defer func() { s.mu.Lock(); delete(s.listeners, ch); s.mu.Unlock() }()
+	defer func() { s.mu.Lock(); delete(s.listeners, ch); delete(s.signalListeners, signals); s.mu.Unlock() }()
 	fmt.Fprint(w, "event: change\ndata: {}\n\n")
 	f.Flush()
 	ticker := time.NewTicker(20 * time.Second)
@@ -230,6 +246,9 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 			return
 		case <-ch:
 			fmt.Fprint(w, "event: change\ndata: {}\n\n")
+			f.Flush()
+		case <-signals:
+			fmt.Fprint(w, "event: signals\ndata: {}\n\n")
 			f.Flush()
 		case <-ticker.C:
 			fmt.Fprint(w, ": keepalive\n\n")

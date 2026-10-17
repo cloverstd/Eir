@@ -2,6 +2,10 @@
 
 Eir 面向受信内网，默认无登录；复用现有 MQTT。支持内置 PostgreSQL 或外部 PostgreSQL。React 资源随服务提供，不依赖 CDN。
 
+页面使用 History 路由：`/data`、`/body`、`/devices`、`/members/:id/:section` 等地址可直接访问，筛选和分页保存在 URL。Go 服务已处理页面回退；反向代理应把完整路径交给 Eir，且不要缓存或缓冲 `/api/v1/events/stream`。缺失的 API 和静态资源仍返回 404。
+
+信号监测升级先部署服务端及页面，再对核实身份的 ESP32 执行 0.3.9 或更新固件的 OTA。数据库新增信号表，不修改健康测量数据。旧固件继续显示 Wi-Fi 心跳信号，完整蓝牙遥测和七天趋势在升级后开始积累。MQTT ACL 若按主题授权，需要为相应采集端开放 `eir/v1/collectors/{id}/signals` 发布及 Eir 的订阅权限。
+
 镜像源码构建使用 Docker BuildKit/buildx，前端和 Go 编译在构建机原生架构运行，再交叉编译目标程序。
 
 ## 默认 Compose

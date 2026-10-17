@@ -13,26 +13,28 @@ import (
 )
 
 type Bus struct {
-	Client  mqtt.Client
-	Store   *store.Store
-	Prefix  string
-	Changed func()
-	drops   atomic.Int64
+	Client         mqtt.Client
+	Store          *store.Store
+	Prefix         string
+	Changed        func()
+	SignalsChanged func()
+	drops          atomic.Int64
 }
 type incoming struct {
-	topic string
-	data  []byte
+	topic    string
+	data     []byte
+	retained bool
 }
 
-func Start(ctx context.Context, s *store.Store, url, user, password, prefix string, changed func()) *Bus {
-	b := &Bus{Store: s, Prefix: strings.Trim(prefix, "/"), Changed: changed}
+func Start(ctx context.Context, s *store.Store, url, user, password, prefix string, changed, signalsChanged func()) *Bus {
+	b := &Bus{Store: s, Prefix: strings.Trim(prefix, "/"), Changed: changed, SignalsChanged: signalsChanged}
 	queue := make(chan incoming, 128)
 	options := mqtt.NewClientOptions().AddBroker(url).SetClientID("eir-service-v1").SetUsername(user).SetPassword(password).SetAutoReconnect(true).SetConnectRetry(true).SetConnectRetryInterval(5 * time.Second).SetConnectTimeout(10 * time.Second).SetCleanSession(true).SetOrderMatters(false)
 	options.SetDefaultPublishHandler(func(_ mqtt.Client, m mqtt.Message) {
 		if len(m.Payload()) > 65536 {
 			return
 		}
-		packet := incoming{m.Topic(), append([]byte(nil), m.Payload()...)}
+		packet := incoming{topic: m.Topic(), data: append([]byte(nil), m.Payload()...), retained: m.Retained()}
 		select {
 		case queue <- packet:
 		default:
@@ -40,7 +42,7 @@ func Start(ctx context.Context, s *store.Store, url, user, password, prefix stri
 		} // No application ack: durable producer retries.
 	})
 	options.OnConnect = func(c mqtt.Client) {
-		token := c.SubscribeMultiple(map[string]byte{b.Prefix + "/collectors/+/measurements": 1, b.Prefix + "/collectors/+/status": 1, b.Prefix + "/collectors/+/events": 1}, nil)
+		token := c.SubscribeMultiple(map[string]byte{b.Prefix + "/collectors/+/measurements": 1, b.Prefix + "/collectors/+/status": 1, b.Prefix + "/collectors/+/events": 1, b.Prefix + "/collectors/+/signals": 1}, nil)
 		if !token.WaitTimeout(10*time.Second) || token.Error() != nil {
 			slog.Error("MQTT subscribe failed")
 			return
@@ -73,7 +75,7 @@ func Start(ctx context.Context, s *store.Store, url, user, password, prefix stri
 				cancel()
 				if e != nil {
 					slog.Error("MQTT processing failed (no app ack)", "error", e)
-				} else if changed != nil {
+				} else if changed != nil && !strings.HasSuffix(packet.topic, "/signals") {
 					changed()
 				}
 			}
@@ -123,6 +125,15 @@ func (b *Bus) consume(ctx context.Context, m incoming) error {
 	}
 	id, kind := parts[0], parts[1]
 	switch kind {
+	case "signals":
+		if m.retained {
+			return nil
+		}
+		changed, e := b.Store.IngestSignals(ctx, id, m.data)
+		if e == nil && changed && b.SignalsChanged != nil {
+			b.SignalsChanged()
+		}
+		return e
 	case "measurements":
 		ack, e := b.Store.Ingest(ctx, id, m.data)
 		if e != nil {

@@ -1,3 +1,4 @@
+import {useQueryState} from "./routing";
 import {useEffect, useRef, useState} from "react";
 import * as echarts from "echarts/core";
 import {bodyFatStatus, bodyFatValue, scaleProfile} from "./bodyDomain";
@@ -26,7 +27,7 @@ function BodyChart({buckets}:{buckets:Row[]}) {
 }
 
 export function BodyMeasurements({members,devices,refresh,api,action,busy}:Props) {
-  const [member,setMember]=useState(""),[device,setDevice]=useState(""),[period,setPeriod]=useState("30"),[from,setFrom]=useState(""),[to,setTo]=useState(""),[group,setGroup]=useState("day"),[page,setPage]=useState(1),[unassigned,setUnassigned]=useState(false);
+  const [member,setMember]=useQueryState("member_id","",["page"]),[device,setDevice]=useQueryState("device_id","",["page"]),[period,setPeriod]=useQueryState("period","30",["page"]),[from,setFrom]=useQueryState("from","",["page"]),[to,setTo]=useQueryState("to","",["page"]),[group,setGroup]=useQueryState("group","day",["page"]),[page,setPage]=useQueryState("page",1),[unassigned,setUnassigned]=useQueryState("unassigned",false,["page"]);
   const [rows,setRows]=useState<Row[]>([]),[stats,setStats]=useState<Row>({}),[total,setTotal]=useState(0),[error,setError]=useState("");
   const [editing,setEditing]=useState<Row|null>(null);
   const q=measurementQuery({member,device,period,from,to,group,page,unassigned,kind:"body_composition"});
@@ -35,7 +36,6 @@ export function BodyMeasurements({members,devices,refresh,api,action,busy}:Props
     Promise.all([api("measurements?"+q),api("statistics?"+q)]).then(([data,stats])=>{if(active){setRows(data.items);setTotal(data.total);setStats(stats);setError("")}}).catch(e=>active&&setError(e.message));
     return ()=>{active=false};
   },[q,refresh,api]);
-  useEffect(()=>{setPage(1)},[member,device,period,from,to,group,unassigned]);
   const scales=devices.filter(d=>d.profile===scaleProfile);
   return <>
     <div className="filters"><label>家庭成员<select value={member} onChange={e=>setMember(e.target.value)}><option value="">全部成员</option>{members.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}</select></label><label>体脂秤<select value={device} onChange={e=>setDevice(e.target.value)}><option value="">全部体脂秤</option>{scales.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select></label><label>时间范围<select value={period} onChange={e=>setPeriod(e.target.value)}><option value="7">最近 7 天</option><option value="30">最近 30 天</option><option value="90">最近 90 天</option><option value="all">全部时间（含未校时）</option><option value="custom">自定义</option></select></label>{period==="custom"&&<><label>开始日期<input type="date" value={from} onChange={e=>setFrom(e.target.value)}/></label><label>结束日期<input type="date" min={from} value={to} onChange={e=>setTo(e.target.value)}/></label></>}<label>汇总<select value={group} onChange={e=>setGroup(e.target.value)}><option value="day">按日</option><option value="week">按周</option><option value="month">按月</option></select></label><label className="check"><input type="checkbox" checked={unassigned} onChange={e=>{setUnassigned(e.target.checked);if(e.target.checked){setMember("");setPeriod("all")}}}/>待归属</label></div>

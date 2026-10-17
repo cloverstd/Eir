@@ -84,6 +84,9 @@ func (s *Store) StartOperation(ctx context.Context, kind, collector, device, sco
 		bindings[c] = binding
 	}
 	if device != "" {
+		if _, e = tx.Exec(ctx, "DELETE FROM signal_latest WHERE link_key=$1", device); e != nil {
+			return "", e
+		}
 		var oldOwner *string
 		var state string
 		e = tx.QueryRow(ctx, "SELECT collector_id,lifecycle_state FROM devices WHERE id=$1 FOR UPDATE", device).Scan(&oldOwner, &state)

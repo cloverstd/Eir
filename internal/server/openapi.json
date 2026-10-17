@@ -1450,7 +1450,8 @@
               }
             }
           }
-        }
+        },
+        "description": "SSE：change 表示普通数据变化；signals 表示信号数据变化。初始连接发送 change；客户端重连后重新读取最新值。"
       }
     },
     "/firmwares": {
@@ -3352,6 +3353,139 @@
           }
         ]
       }
+    },
+    "/signals/latest": {
+      "get": {
+        "summary": "最新 Wi-Fi／蓝牙信号",
+        "parameters": [
+          {
+            "name": "collector_id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "wifi",
+                "ble"
+              ]
+            }
+          },
+          {
+            "name": "device_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Signal"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "无效筛选条件"
+          }
+        }
+      }
+    },
+    "/signals/history": {
+      "get": {
+        "summary": "最近七天的信号趋势，包含缺测时间桶",
+        "parameters": [
+          {
+            "name": "collector_id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": ""
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "wifi",
+                "ble"
+              ]
+            },
+            "required": true,
+            "description": ""
+          },
+          {
+            "name": "device_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": false,
+            "description": "BLE 链路必须指定 device_id"
+          },
+          {
+            "name": "range",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "15m",
+                "1h",
+                "24h",
+                "7d"
+              ],
+              "default": "1h"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "range": {
+                      "type": "string"
+                    },
+                    "bucket_seconds": {
+                      "type": "integer"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SignalBucket"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "缺少链路或无效时间范围"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -5001,6 +5135,100 @@
             "type": "number"
           }
         }
+      },
+      "Signal": {
+        "type": "object",
+        "required": [
+          "collector_id",
+          "kind",
+          "sampled_at",
+          "rssi",
+          "source",
+          "connected",
+          "online",
+          "fresh"
+        ],
+        "properties": {
+          "collector_id": {
+            "type": "string"
+          },
+          "device_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "wifi",
+              "ble"
+            ]
+          },
+          "sampled_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "received_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "rssi": {
+            "type": "integer",
+            "minimum": -127,
+            "maximum": 20,
+            "description": "dBm；不可用时 null",
+            "nullable": true
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "wifi",
+              "advertisement",
+              "connection"
+            ]
+          },
+          "connected": {
+            "type": "boolean"
+          },
+          "online": {
+            "type": "boolean"
+          },
+          "fresh": {
+            "type": "boolean",
+            "description": "当前启动且采样未超过 15 秒"
+          },
+          "boot_id": {
+            "type": "string"
+          },
+          "sequence": {
+            "type": "integer"
+          }
+        }
+      },
+      "SignalBucket": {
+        "type": "object",
+        "properties": {
+          "time": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "mean": {
+            "type": "number",
+            "nullable": true
+          },
+          "min": {
+            "type": "number",
+            "nullable": true
+          },
+          "max": {
+            "type": "number",
+            "nullable": true
+          },
+          "count": {
+            "type": "integer"
+          }
+        },
+        "description": "无有效样本时 mean/min/max=null、count=0，曲线断开"
       }
     }
   }

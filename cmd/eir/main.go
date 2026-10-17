@@ -71,7 +71,25 @@ func main() {
 			}
 		}
 	}()
-	app.Bus = messaging.Start(ctx, db, env("MQTT_URL", "tcp://localhost:1883"), os.Getenv("MQTT_USERNAME"), os.Getenv("MQTT_PASSWORD"), env("MQTT_PREFIX", "eir/v1"), app.Changed)
+	go func() {
+		cleanup := func() {
+			if e := db.CleanupSignals(ctx); e != nil {
+				slog.Error("signal cleanup failed", "error", e)
+			}
+		}
+		cleanup()
+		ticker := time.NewTicker(time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				cleanup()
+			}
+		}
+	}()
+	app.Bus = messaging.Start(ctx, db, env("MQTT_URL", "tcp://localhost:1883"), os.Getenv("MQTT_USERNAME"), os.Getenv("MQTT_PASSWORD"), env("MQTT_PREFIX", "eir/v1"), app.Changed, app.SignalsChanged)
 	srv := &http.Server{Addr: env("HTTP_ADDR", ":8080"), Handler: app.Handler(), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 1 << 16}
 	go func() {
 		slog.Info("Eir listening", "address", srv.Addr)

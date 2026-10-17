@@ -1,5 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import {BrowserRouter,Link,useLocation} from "react-router";
+import {RoutingProvider,useQueryState} from "./routing";
+import {pagePaths,routeForPath} from "./routingDomain";
+import {SignalProvider,SignalValue,SignalHistory} from "./signals";
 import * as echarts from "echarts/core";
 import { LineChart } from "echarts/charts";
 import {
@@ -107,7 +111,8 @@ function Chart({ buckets }: { buckets: Row[] }) {
   );
 }
 function App() {
-  const [tab, setTab] = useState("overview");
+  const route=routeForPath(useLocation().pathname);
+  const tab=route.page;
   const [members, setMembers] = useState<Row[]>([]),
     [devices, setDevices] = useState<Row[]>([]),
     [collectors, setCollectors] = useState<Row[]>([]),
@@ -121,14 +126,14 @@ function App() {
   const [measurements, setMeasurements] = useState<Row[]>([]),
     [total, setTotal] = useState(0),
     [stats, setStats] = useState<Row>({});
-  const [member, setMember] = useState(""),
-    [device, setDevice] = useState(""),
-    [unassigned, setUnassigned] = useState(false),
-    [period, setPeriod] = useState("30"),
-    [from, setFrom] = useState(""),
-    [to, setTo] = useState(""),
-    [group, setGroup] = useState("day"),
-    [page, setPage] = useState(1);
+  const [member, setMember] = useQueryState("member_id", "", ["page"]),
+    [device, setDevice] = useQueryState("device_id", "", ["page"]),
+    [unassigned, setUnassigned] = useQueryState("unassigned", false, ["page"]),
+    [period, setPeriod] = useQueryState("period", "30", ["page"]),
+    [from, setFrom] = useQueryState("from", "", ["page"]),
+    [to, setTo] = useQueryState("to", "", ["page"]),
+    [group, setGroup] = useQueryState("group", "day", ["page"]),
+    [page, setPage] = useQueryState("page", 1);
   const [error, setError] = useState(""),
     [loadError, setLoadError] = useState(""),
     [notice, setNotice] = useState(""),
@@ -199,19 +204,18 @@ function App() {
     };
   }, [query, refresh]);
   useEffect(() => {
-    const s = new EventSource("/api/v1/events/stream");
+
     let t: ReturnType<typeof setTimeout>;
     const update = () => {
       clearTimeout(t);
       t = setTimeout(() => setRefresh((x) => x + 1), 500);
     };
-    s.addEventListener("change", update);
-    s.onmessage = update;
+    window.addEventListener("eir-change", update);
     const interval = setInterval(update, 30000);
     return () => {
       clearTimeout(t);
       clearInterval(interval);
-      s.close();
+      window.removeEventListener("eir-change", update);
     };
   }, []);
   useEffect(() => {
@@ -326,31 +330,24 @@ function App() {
   return (
     <div className="shell">
       <aside>
-        <a
-          className="brand"
-          href="#"
-          onClick={(e) => {
-            e.preventDefault();
-            setTab("overview");
-          }}
-        >
+        <Link className="brand" to="/">
           <span className="mark">e</span>
           <span>
             Eir<small>家庭健康管理</small>
           </span>
-        </a>
+        </Link>
         <div className="nav-label">家庭空间</div>
         <nav aria-label="主导航">
           {tabs.map(([id, icon, label]) => (
-            <button
+            <Link
+              to={pagePaths[id]}
               key={id}
               aria-current={tab === id ? "page" : undefined}
               className={tab === id ? "active" : ""}
-              onClick={() => setTab(id)}
             >
               <span>{icon}</span>
               {label}
-            </button>
+            </Link>
           ))}
         </nav>
         <div className="side-foot">
@@ -362,7 +359,7 @@ function App() {
           <div className="eyebrow">EIR / FAMILY WELLNESS</div>
           <div className="heading">
             <div>
-              <h1>{tabs.find((x) => x[0] === tab)?.[2]}</h1>
+              <h1>{tabs.find((x) => x[0] === tab)?.[2] || "页面未找到"}</h1>
               <p>
                 {tab === "overview"
                   ? "关心家人的每一次变化。"
@@ -419,6 +416,7 @@ function App() {
           </section>
         ) : (
           <>
+            {tab === "not-found" && <section className="panel"><h2>页面未找到</h2><Link to="/">返回家庭概览</Link></section>}
             {(tab === "overview" || tab === "data") && (
               <>
                 <div className="filters">
@@ -515,12 +513,7 @@ function App() {
                   <section>
                     <div className="section-title">
                       <h2>家人的健康档案</h2>
-                      <button
-                        className="link"
-                        onClick={() => setTab("members")}
-                      >
-                        管理成员 →
-                      </button>
+                      <Link className="link" to="/members">管理成员 →</Link>
                     </div>
                     {!members.length ? (
                       <Empty>
@@ -529,16 +522,7 @@ function App() {
                     ) : (
                       <div className="member-cards">
                         {members.map((m, i) => (
-                          <button
-                            className="member-card"
-                            key={m.id}
-                            onClick={() => {
-                              setMember(m.id);
-                              setUnassigned(false);
-                              setTab("data");
-                              setPage(1);
-                            }}
-                          >
+                          <Link className="member-card" key={m.id} to={"/data?"+new URLSearchParams({member_id:m.id,period,group,...(period==="custom"?{from,to}:{})})}>
                             <div className={"avatar a" + (i % 3)}>
                               {m.name.slice(0, 1)}
                             </div>
@@ -554,7 +538,7 @@ function App() {
                               )}
                             </div>
                             <span className="arrow">↗</span>
-                          </button>
+                          </Link>
                         ))}
                       </div>
                     )}
@@ -715,12 +699,7 @@ function App() {
                   <section className="panel">
                     <div className="section-title">
                       <h2>采集网络</h2>
-                      <button
-                        className="link"
-                        onClick={() => setTab("devices")}
-                      >
-                        管理采集端 →
-                      </button>
+                      <Link className="link" to="/devices">管理采集端 →</Link>
                     </div>
                     {!collectors.length ? (
                       <Empty>等待采集端连接 MQTT 后自动出现</Empty>
@@ -733,6 +712,7 @@ function App() {
                           <strong>{c.name || c.id}</strong>
                           <span>{c.location || "未设置位置"}</span>
                           <span>{c.online ? "在线" : "离线"}</span>
+                          <SignalValue collector={c} compact/>
                           <small>最近连接 {date(c.last_seen)}</small>
                         </div>
                       ))
@@ -742,11 +722,12 @@ function App() {
               </>
             )}
             {tab === "body" && <BodyMeasurements members={members} devices={devices} refresh={refresh} api={api} action={action} busy={busy}/>}
-            {tab === "members" && <HealthProfiles members={members} refresh={refresh} api={api} action={action} busy={busy}/>}
+            {tab === "members" && <HealthProfiles key={route.memberId} members={members} refresh={refresh} api={api} action={action} busy={busy}/>}
             {tab === "settings" && <><section className="panel"><h2>数据重置</h2><p>先预览影响范围，再确认执行。不会删除血压计自身记录、固件库、已有备份和导出文件。</p><div className="actions"><ResetAction api={api} action={action} busy={busy} type="system_reset" scope="measurements" label="清空健康数据" /><ResetAction api={api} action={action} busy={busy} type="system_reset" scope="all" label="完整重置 Eir" /></div></section><Operations operations={operations} /></>}
             {tab === "devices" && (
               <>
                 <Discovered rows={discovered} api={api} action={action} busy={busy} />
+                <SignalHistory collectors={collectors} devices={devices}/>
                 <Operations operations={operations} />
                 <section>
                   <div className="section-title">
@@ -773,6 +754,7 @@ function App() {
                             </span>
                           </div>
                           <code>{c.id}</code>
+                          <SignalValue collector={c}/>
                           <form
                             onSubmit={(e) => {
                               const d = form(e);
@@ -812,10 +794,6 @@ function App() {
                               {c.status?.queue_depth ??
                                 c.status?.pending_count ??
                                 "—"}
-                            </dd>
-                            <dt>Wi-Fi 信号</dt>
-                            <dd>
-                              {c.status?.rssi ?? c.status?.wifi_rssi ?? "—"} dBm
                             </dd>
                             <dt>体脂秤容量</dt><dd>{c.status?.capabilities?.max_scales ? `${devices.filter(d=>d.collector_id===c.id&&d.profile===scaleProfile).length} / ${c.status.capabilities.max_scales} 台` : "请升级固件后接入"}</dd>
                             <dt>最近在线</dt>
@@ -960,7 +938,8 @@ function App() {
                         </button>
                       </div>
                       </>}
-                      {d.profile===scaleProfile && <>{d.lifecycle_state!=="active"&&d.collector_id&&<button disabled={busy||!collectors.find(c=>c.id===d.collector_id)?.online} onClick={()=>command(d.collector_id,"pair",d.id)}>重试接入验证</button>}<label>体脂估算通道<select value={d.adc_index} disabled={busy} onChange={e=>action(()=>api("devices/"+d.id,"PATCH",{adc_index:Number(e.target.value)}),"计算通道已保存，仅影响新测量")}><option value="0">ADC 1（默认）</option><option value="1">ADC 2</option></select></label><p>所属成员：{bindings.find(b=>b.device_id===d.id&&!b.effective_to)?.member_name||"待绑定"} · {collectors.find(c=>c.id===d.collector_id)?.status?.devices?.find((v:Row)=>v.id===d.id)?.connected?"蓝牙已连接":"等待秤唤醒"}</p></>}
+                      {d.profile===scaleProfile && <>{d.lifecycle_state!=="active"&&d.collector_id&&<button disabled={busy||!collectors.find(c=>c.id===d.collector_id)?.online} onClick={()=>command(d.collector_id,"pair",d.id)}>重试接入验证</button>}<label>体脂估算通道<select value={d.adc_index} disabled={busy} onChange={e=>action(()=>api("devices/"+d.id,"PATCH",{adc_index:Number(e.target.value)}),"计算通道已保存，仅影响新测量")}><option value="0">ADC 1（默认）</option><option value="1">ADC 2</option></select></label><p>所属成员：{bindings.find(b=>b.device_id===d.id&&!b.effective_to)?.member_name||"待绑定"}{!collectors.find(c=>c.id===d.collector_id)?.status?.capabilities?.signals&&<> · {collectors.find(c=>c.id===d.collector_id)?.status?.devices?.find((v:Row)=>v.id===d.id)?.connected?"蓝牙已连接":"等待秤唤醒"}</>}</p></>}
+                      <SignalValue collector={collectors.find(c=>c.id===d.collector_id)} device={d}/>
                       <DeviceActions device={d} collectors={collectors} api={api} action={action} busy={busy} />
                     </section>
                   ))}
@@ -1369,6 +1348,6 @@ function safeDebugURL(s: Row | undefined) {
 }
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <App />
+    <BrowserRouter><RoutingProvider><SignalProvider><App /></SignalProvider></RoutingProvider></BrowserRouter>
   </React.StrictMode>,
 );

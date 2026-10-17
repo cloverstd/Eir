@@ -1,3 +1,6 @@
+import {Link,useLocation} from "react-router";
+import {useQueryState,useRouteNavigation} from "./routing";
+import {routeForPath} from "./routingDomain";
 import { useEffect, useRef, useState } from "react";
 import * as echarts from "echarts/core";
 import { ProfileFields } from "./body";
@@ -182,28 +185,28 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
   const [historyOptions, setHistoryOptions] = useState<Row[]>([]),
     [historySearch, setHistorySearch] = useState(""),
     [linkedHistory, setLinkedHistory] = useState("");
-  const [selected, setSelected] = useState(""),
-    [section, setSection] = useState("basic"),
-    [creating, setCreating] = useState(false);
+  const {memberId:selected,section}=routeForPath(useLocation().pathname);
+  const navigation=useRouteNavigation();
+  const [creating,setCreating]=useState(false);
   const [history, setHistory] = useState<Row[]>([]),
     [documents, setDocuments] = useState<Row[]>([]),
     [rows, setRows] = useState<Row[]>([]),
     [stats, setStats] = useState<Row[]>([]),
     [metrics, setMetrics] = useState<Row[]>([]);
-  const [statsPage, setStatsPage] = useState(1),
+  const [statsPage, setStatsPage] = useQueryState("stats_page", 1),
     [statsTotal, setStatsTotal] = useState(0);
   const [historyTotal, setHistoryTotal] = useState(0),
     [documentTotal, setDocumentTotal] = useState(0),
     [total, setTotal] = useState(0),
-    [page, setPage] = useState(1),
-    [historyPage, setHistoryPage] = useState(1),
-    [documentPage, setDocumentPage] = useState(1);
-  const [kind, setKind] = useState("weight"),
-    [historyKind, setHistoryKind] = useState(""),
-    [source, setSource] = useState(""),
-    [from, setFrom] = useState(""),
-    [to, setTo] = useState(""),
-    [group, setGroup] = useState("day");
+    [page, setPage] = useQueryState("page", 1),
+    [historyPage, setHistoryPage] = useQueryState("history_page", 1),
+    [documentPage, setDocumentPage] = useQueryState("document_page", 1);
+  const [kind, setKind] = useQueryState("kind", "weight", ["page","stats_page","history_page"]),
+    [historyKind, setHistoryKind] = useQueryState("history_kind", "", ["page","stats_page","history_page"]),
+    [source, setSource] = useQueryState("source", "", ["page","stats_page","history_page"]),
+    [from, setFrom] = useQueryState("from", "", ["page","stats_page","history_page"]),
+    [to, setTo] = useQueryState("to", "", ["page","stats_page","history_page"]),
+    [group, setGroup] = useQueryState("group", "day", ["page","stats_page","history_page"]);
   const [editHistory, setEditHistory] = useState<Row | null>(null),
     [editMetric, setEditMetric] = useState<Row | null>(null),
     [editDocument, setEditDocument] = useState<Row | null>(null),
@@ -283,21 +286,15 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
     historyKind,
     statsPage,
   ]);
-  useEffect(() => {
-    setPage(1);
-    setStatsPage(1);
-  }, [kind, source, from, to, group, selected]);
   const open = (id: string) => {
-    setSelected(id);
-    setSection("basic");
-    setHistoryPage(1);
-    setDocumentPage(1);
+    navigation.go(`/members/${id}/basic`);
     setPreview(null);
     setEditHistory(null);
     setEditMetric(null);
     setEditDocument(null);
     setCreating(false);
   };
+  if (selected && !member) return <section className="panel"><h2>成员未找到</h2><Link to="/members">返回成员列表</Link></section>;
   if (!member)
     return (
       <>
@@ -329,9 +326,7 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
                 {memberAge(m)} · {m.blood_type || "血型未填写"}
               </p>
               <p>{m.height_cm ? `${m.height_cm} cm` : "身高未填写"}</p>
-              <button className="secondary" onClick={() => open(m.id)}>
-                查看健康档案
-              </button>
+              <Link className="button secondary" to={`/members/${m.id}/basic`}>查看健康档案</Link>
             </section>
           ))}
         </div>
@@ -366,9 +361,7 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
           <h2>{member.name}的健康档案</h2>
           <p>{memberAge(member)}</p>
         </div>
-        <button className="secondary" onClick={() => setSelected("")}>
-          返回成员列表
-        </button>
+        <Link className="button secondary" to="/members">返回成员列表</Link>
       </div>
       <div className="profile-tabs" role="tablist" aria-label="健康档案分类">
         {[
@@ -377,15 +370,15 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
           ["metrics", "身体指标"],
           ["documents", "医疗文件"],
         ].map(([id, label]) => (
-          <button
+          <Link
+            to={`/members/${selected}/${id}`}
             role="tab"
             aria-selected={section === id}
             className={section === id ? "" : "secondary"}
             key={id}
-            onClick={() => setSection(id)}
           >
             {label}
-          </button>
+          </Link>
         ))}
       </div>
       {error && (
@@ -650,7 +643,7 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
                   <button
                     className="secondary"
                     onClick={() => {
-                      setSection("documents");
+                      navigation.go(`/members/${selected}/documents`);
                       setEditDocument(null);
                       setLinkedHistory(h.id);
                     }}

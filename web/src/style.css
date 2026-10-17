@@ -112,7 +112,7 @@ nav {
   flex-direction: column;
   gap: 9px;
 }
-nav button {
+nav a {
   text-align: left;
   justify-content: flex-start;
   color: #6b796f;
@@ -120,15 +120,15 @@ nav button {
   padding: 12px 16px;
   gap: 12px;
 }
-nav button span {
+nav a span {
   font-size: 21px;
   width: 22px;
 }
-nav button.active {
+nav a.active {
   background: #e8f0e8;
   color: #0c6657;
 }
-nav button.active:after {
+nav a.active:after {
   content: "";
   width: 5px;
   height: 5px;
@@ -683,7 +683,7 @@ footer {
     max-width: 100%;
     scrollbar-width: thin;
   }
-  nav button {
+  nav a {
     font-size: 11px;
     padding: 8px 6px 11px;
     flex-direction: column;
@@ -692,11 +692,11 @@ footer {
     flex: 0 0 auto;
     min-width: 48px;
   }
-  nav button span {
+  nav a span {
     font-size: 17px;
     line-height: 1.4;
   }
-  nav button.active:after {
+  nav a.active:after {
     display: none;
   }
   main {
@@ -842,3 +842,25 @@ textarea { width:100%; min-width:0; border:1px solid var(--line,#d8e1da); border
 .profile-tabs button { flex:1 1 auto; }
 input[type=file] { width:100%; min-width:0; }
 @media(max-width:600px) { .wide-field { grid-column:auto; } .profile-tabs button { flex-basis:40%; } }
+
+nav a {display:flex;align-items:center;border-radius:12px;text-decoration:none;position:relative;cursor:pointer}
+.profile-tabs a {display:inline-flex;padding:10px 16px;border-radius:10px;text-decoration:none;background:var(--green,#0c6657);color:white}
+.profile-tabs a.secondary {background:#edf2ed;color:#315149}
+
+.signal-value {display:flex;flex-direction:column;gap:5px;margin:14px 0;font-size:14px;min-width:0}
+.signal-reading {display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.signal-bars {display:inline-flex;gap:3px;align-items:flex-end;height:20px}
+.signal-bars i {width:4px;background:#d8e1da;border-radius:2px}
+.signal-bars i.lit {background:#0c6657}
+.signal-value small {overflow-wrap:anywhere;color:#65756e}
+.signal-value.stale .signal-bars i.lit {background:#91a099}
+.signal-value.compact {margin:0;font-size:12px}
+.signal-value.compact strong {white-space:nowrap}
+.signal-history label {max-width:220px}
+.signal-history .section-title {align-items:flex-start;flex-wrap:wrap}
+@media(max-width:600px){.network-row{flex-wrap:wrap}.signal-value{width:100%}.signal-value.compact{width:auto}.signal-history h2{font-size:18px}}
+
+a.member-card {text-decoration:none;color:inherit}
+
+.signal-history {scroll-margin-top:24px}
+@media(max-width:800px){.signal-history{scroll-margin-top:150px}}

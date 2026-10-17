@@ -1,5 +1,9 @@
 #pragma once
 #include "eir.h"
+#include "signal_policy.h"
+extern signal_policy::Cache signal_cache;
+void ble_sample_signals();
+void afu_sample_signals();
 #include "host/ble_hs.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"

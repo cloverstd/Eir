@@ -36,6 +36,24 @@ OTA额外字段：`url,sha256,size,version,chip:"esp32c3",partition_layout:"eir-
 
 `status`: `{online,collector_id,firmware,ip,rssi,free_heap,uptime,queue_depth,error,last_command}`。last_command携带最近一次持久化命令事件，服务器通过心跳恢复丢失结果。遗嘱只发送`{online:false}`，服务器合并状态，保留最后版本和IP。90秒无新心跳视为离线。
 
+## 信号遥测（固件 0.3.9 起）
+
+`status` 增加每次启动随机的 32 位十六进制 `boot_id` 和 `capabilities.signals:true`。旧 `rssi` 字段仍表示 Wi-Fi dBm；接入点读取失败时为 `null`。心跳继续每 10 秒发送。
+
+新增 `signals` 主题，QoS 1、**不 retained**，每 5 秒至多一批。示例：
+
+```json
+{"protocol_version":2,"instance_id":"实例UUID","binding_id":"关联UUID","data_epoch":"代次UUID","boot_id":"0123456789abcdef0123456789abcdef","sequence":1,"uptime_ms":100000,"sent_at":"2026-10-18T00:00:00.123Z","samples":[{"kind":"wifi","source":"wifi","rssi":-55,"connected":true,"age_ms":0},{"kind":"ble","device_id":"设备UUID","source":"advertisement","rssi":-72,"connected":false,"age_ms":200}]}
+```
+
+`sequence` 为本次启动递增批次号，`uptime_ms` 为本次启动至打包时的单调时钟毫秒数；`age_ms` 为打包时样本的单调时钟年龄（0–15000）。校时后携带 `sent_at`；未校时省略，利用同一启动心跳的 `uptime` 和服务器收到心跳的时间锚点推算采样时间，再减 `age_ms`；缺少锚点或推算已超过 15 秒的批次丢弃，防止网络恢复后将旧队列信号当作实时值。`source` 为 `wifi`、`advertisement` 或 `connection`；RSSI 不可用时为 `null`，不能用 0 代表失败。
+
+BLE 广播缓存逐次更新，每批只发送各关联设备最新、尚未发送的真实观测；连接期间每 5 秒读 RSSI，短连接建立后也读取一次。停止广播或断开连接后不重复产生旧样本。Omron 沿用广播地址及地址类型匹配，AFU 沿用硬件身份匹配。所有信号缓存均有界且仅存在于 RAM，不写 Flash，也不使用健康测量 ACK 或重传队列。最多一个信号批次等待 broker PUBACK，断网或拥塞时丢弃中间遥测，恢复后历史保持缺口。
+
+服务端只接受当前已绑定采集端的 `instance_id/binding_id/data_epoch` 和最近有效心跳已宣布的 `boot_id`；BLE 还必须属于该采集端且为 active。重复批次不重复落库，乱序旧样本不能覆盖最新信号。校时时钟偏差超过未来 5 秒或过去 15 秒的批次丢弃。信号历史独立保存 7 天，启动及每小时清理；删除设备／采集端级联清理其信号。重新关联先清除最新指针，旧作用域信号不参与当前查询。
+
+HTTP `GET /api/v1/signals/latest` 可按 `collector_id,kind,device_id` 筛选；`GET /api/v1/signals/history` 必须选择采集端和类型，BLE 必须指定设备。`range=15m|1h|24h|7d` 对应 5 秒／5 秒／1 分钟／5 分钟桶；返回 `items[{time,mean,min,max,count}]`，缺测值为 null。SSE `/api/v1/events/stream` 的 `signals` 事件只更新信号区域，`change` 保留原有语义。
+
 ## REST
 
 完整请求、响应及筛选定义由 `/api/v1/openapi.json` 提供。API和前端同源，拒绝跨源写入；不设置用户登录。CSV采用UTF-8 BOM，保护名字/备注的公式前缀。原始记录不可通过PATCH改写；仅归属和备注可改，保留修改审计。

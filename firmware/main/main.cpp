@@ -31,6 +31,7 @@
 #include <ctime>
 #include <dirent.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <unistd.h>
 std::string collector_id, last_error;
 std::mutex state_mutex, radio_mutex;
@@ -38,7 +39,7 @@ std::atomic<bool> upgrading{false}, ble_busy{false}, lifecycle_busy{false}, life
 static std::string lifecycle = "{}";
 static std::mutex lifecycle_mutex;
 static std::string lifecycle_snapshot(){std::lock_guard<std::mutex> l(lifecycle_mutex);return lifecycle;}
-static void lifecycle_set(const std::string &value){std::lock_guard<std::mutex> l(lifecycle_mutex);lifecycle=value;}
+static void lifecycle_set(const std::string &value){std::lock_guard<std::mutex> l(lifecycle_mutex);lifecycle=value;signal_cache.clear(esp_timer_get_time()/1000);}
 static std::atomic<bool> reset_prepared{false}, legacy_mode{false};
 bool lifecycle_bound() { auto j=cJSON_Parse(lifecycle_snapshot().c_str()); bool b=!str(j,"binding_id").empty(); cJSON_Delete(j); return b; }
 bool collection_enabled() { return !reset_prepared && (lifecycle_bound() || legacy_mode); }
@@ -55,6 +56,8 @@ static bool matches(cJSON *j) {
 static nvs_handle_t nv;
 static esp_mqtt_client_handle_t mqtt;
 static std::atomic<bool> wifi_ok{false}, mqtt_ok{false};
+static std::string signal_boot_id;
+static uint64_t signal_sequence=0;
 static std::string startup_ota_command, startup_reset_proof = "{}", last_measurement = "null";
 static std::string ip, config = "{}",
                        assignment = "{\"version\":0,\"devices\":[]}", logs;
@@ -252,6 +255,7 @@ bool enqueue_scale(const Device &d,const std::string &session,const std::string 
 static std::string status() {
   auto j = cJSON_CreateObject();
   stamp(j);
+  cJSON_AddStringToObject(j,"boot_id",signal_boot_id.c_str());
   cJSON_AddBoolToObject(j,"legacy_adoption",get("legacy_adopt")=="1");
   cJSON_AddBoolToObject(j,"bound",lifecycle_bound());
   cJSON_AddItemToObject(j,"reset_receipt",cJSON_Parse(startup_reset_proof.c_str()));
@@ -271,8 +275,8 @@ static std::string status() {
   cJSON_AddNumberToObject(j, "reset_reason", esp_reset_reason());
   cJSON_AddBoolToObject(j, "clock_synchronized", time(nullptr) > 1700000000);
   wifi_ap_record_t ap{};
-  esp_wifi_sta_get_ap_info(&ap);
-  cJSON_AddNumberToObject(j, "rssi", ap.rssi);
+  if(wifi_ok&&esp_wifi_sta_get_ap_info(&ap)==ESP_OK)cJSON_AddNumberToObject(j,"rssi",ap.rssi);
+  else cJSON_AddNullToObject(j,"rssi");
   cJSON_AddNumberToObject(j, "free_heap", esp_get_free_heap_size());
   cJSON_AddNumberToObject(j,"min_free_heap",esp_get_minimum_free_heap_size());
   cJSON_AddBoolToObject(j,"ble_scanning",ble_gap_disc_active());
@@ -288,6 +292,7 @@ static std::string status() {
                           cJSON_Parse(last_measurement.c_str()));
   }
   auto caps=cJSON_AddObjectToObject(j,"capabilities");
+  cJSON_AddBoolToObject(caps,"signals",true);
   auto profiles=cJSON_AddArrayToObject(caps,"profiles");cJSON_AddItemToArray(profiles,cJSON_CreateString("omron-hem-7374t1"));cJSON_AddItemToArray(profiles,cJSON_CreateString("afu-wl-tz-a1"));
   cJSON_AddNumberToObject(caps,"max_scales",2);cJSON_AddNumberToObject(caps,"max_connections",3);
   auto configured=cJSON_AddArrayToObject(j,"devices");
@@ -305,6 +310,34 @@ static std::string status() {
   auto s = js(j);
   cJSON_Delete(j);
   return s;
+}
+
+static void publish_signals(){
+  if(!mqtt_ok||!lifecycle_bound()||upgrading||lifecycle_busy||reset_prepared||esp_mqtt_client_get_outbox_size(mqtt)>0)return;
+  // Telemetry only enters an empty MQTT outbox. A lost PUBACK cannot grow a
+  // backlog, and queued health records always take priority over signal data.
+  ble_sample_signals();afu_sample_signals();
+  auto j=cJSON_CreateObject();stamp(j);
+  cJSON_AddStringToObject(j,"boot_id",signal_boot_id.c_str());
+  cJSON_AddNumberToObject(j,"sequence",++signal_sequence);
+  cJSON_AddNumberToObject(j,"uptime_ms",esp_timer_get_time()/1000);
+  timeval tv{};gettimeofday(&tv,nullptr);
+  if(tv.tv_sec>1700000000){tm t{};gmtime_r(&tv.tv_sec,&t);char at[40];strftime(at,sizeof(at),"%Y-%m-%dT%H:%M:%S",&t);std::string full=at;char fraction[16];snprintf(fraction,sizeof(fraction),".%03ldZ",long(tv.tv_usec/1000));full+=fraction;cJSON_AddStringToObject(j,"sent_at",full.c_str());}
+  auto samples=cJSON_AddArrayToObject(j,"samples");
+  auto wifi=cJSON_CreateObject();cJSON_AddStringToObject(wifi,"kind","wifi");cJSON_AddStringToObject(wifi,"source","wifi");cJSON_AddNumberToObject(wifi,"age_ms",0);
+  wifi_ap_record_t ap{};bool available=wifi_ok&&esp_wifi_sta_get_ap_info(&ap)==ESP_OK;
+  if(available)cJSON_AddNumberToObject(wifi,"rssi",ap.rssi);else cJSON_AddNullToObject(wifi,"rssi");
+  cJSON_AddBoolToObject(wifi,"connected",available);cJSON_AddItemToArray(samples,wifi);
+  int64_t now=esp_timer_get_time()/1000;
+  for(const auto &d:devices()){
+    signal_policy::Sample sample;if(!d.enabled||!signal_cache.take(d.id,now,sample))continue;
+    auto row=cJSON_CreateObject();cJSON_AddStringToObject(row,"kind","ble");cJSON_AddStringToObject(row,"device_id",d.id.c_str());cJSON_AddNumberToObject(row,"rssi",sample.rssi);
+    cJSON_AddStringToObject(row,"source",sample.source);cJSON_AddNumberToObject(row,"age_ms",now-sample.when);
+    bool connected=d.profile=="afu-wl-tz-a1"?afu_connected(d.id):ble_connected(d.id);
+    cJSON_AddBoolToObject(row,"connected",connected);cJSON_AddItemToArray(samples,row);
+  }
+  auto payload=js(j);cJSON_Delete(j);
+  esp_mqtt_client_publish(mqtt,topic("signals").c_str(),payload.c_str(),0,1,0);
 }
 struct OtaRequest {
   std::string id, url, sha;
@@ -462,7 +495,7 @@ static bool clear_health_files(bool all) {
 }
 static bool save_assignment(const std::string &v) {
   if(!put("assignment",v)){lifecycle_storage_fault=true;return false;}
-  std::lock_guard<std::mutex> l(state_mutex); assignment=v; return true;
+  std::lock_guard<std::mutex> l(state_mutex); assignment=v;signal_cache.clear(esp_timer_get_time()/1000);return true;
 }
 static time_t command_expiry(const cJSON *j) {
   struct tm t{};auto expiry=str(j,"expires_at");
@@ -941,6 +974,7 @@ static void serial_config(void *) {
   }
 }
 extern "C" void app_main() {
+  uint8_t signal_random[16];esp_fill_random(signal_random,sizeof(signal_random));signal_boot_id=hex(signal_random,sizeof(signal_random));
   ESP_ERROR_CHECK(nvs_flash_init());
   if (psa_crypto_init() != PSA_SUCCESS)
     abort();
@@ -1073,6 +1107,7 @@ extern "C" void app_main() {
       esp_ota_mark_app_valid_cancel_rollback();
       confirmed = true;
     }
+    if(tick%5==0)publish_signals();
     if (mqtt_ok && tick % 10 == 0) {
       auto s = status();
       esp_mqtt_client_publish(mqtt, topic("status").c_str(), s.c_str(), 0, 1,

@@ -20,6 +20,9 @@ var bodySchema string
 //go:embed health.sql
 var healthSchema string
 
+//go:embed signals.sql
+var signalsSchema string
+
 type Store struct{ DB *pgxpool.Pool }
 
 func Open(ctx context.Context, url string) (*Store, error) {
@@ -61,6 +64,9 @@ func (s *Store) Migrate(ctx context.Context) error {
 		return e
 	}
 	if _, e = tx.Exec(ctx, healthSchema); e != nil {
+		return e
+	}
+	if _, e = tx.Exec(ctx, signalsSchema); e != nil {
 		return e
 	}
 	return tx.Commit(ctx)
