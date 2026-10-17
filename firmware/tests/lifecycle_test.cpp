@@ -1,0 +1,51 @@
+#include "../main/lifecycle_policy.h"
+#include <cassert>
+int main() {
+  using namespace lifecycle_policy;
+  Scope unbound{}, active{"eir", "binding", "epoch"};
+  assert(!matches(unbound, unbound));
+  assert(matches(active, active));
+  assert(!matches(active, {"eir", "binding", "old"}));
+  assert(!matches(active, {"another-eir", "binding", "epoch"}));
+  assert(!matches(active, {"eir", "removed-binding", "epoch"}));
+  assert(claim(unbound, active, "fresh", "fresh", false));
+  assert(!claim(unbound, active, "fresh", "retained-old", false));
+  assert(!claim(unbound, active, "", "", false));
+  assert(!claim(unbound, active, "fresh", "fresh", true));
+  assert(!claim(active, {"eir", "new-binding", "epoch"}, "fresh", "fresh", false));
+  assert(claim(active, active, "fresh", "fresh", false));
+  assert(deletion_succeeded(0, 0));
+  assert(deletion_succeeded(-1, ENOENT));
+  assert(!deletion_succeeded(-1, EACCES));
+  assert(!deletion_succeeded(-1, EIO));
+  assert(receipt_room(31, false));
+  assert(!receipt_room(32, false));
+  assert(receipt_room(32, true));
+  assert(receipt_evictable(1700000001, 1800000000, false));
+  assert(!receipt_evictable(1900000000, 1800000000, false));
+  assert(!receipt_evictable(1700000001, 1800000000, true));
+  assert(!receipt_evictable(0, 1800000000, false));
+  assert(!receipt_evictable(1700000001, 0, false));
+  assert(owns_preparation("op", "op", "op"));
+  assert(owns_preparation("op", "", "op"));
+  assert(!owns_preparation("old", "new", "new"));
+  assert(!owns_preparation("old", "new", "old"));
+  assert(!owns_preparation("old", "", "new"));
+  assert(!owns_preparation("op", "", ""));
+  assert(retire_preparation("device_bind","succeeded","op","","op"));
+  assert(retire_preparation("commit_data_reset","succeeded","op","","op"));
+  assert(!retire_preparation("device_bind","prepared","op","","op"));
+  assert(!retire_preparation("device_bind","succeeded","op","op","op"));
+  assert(!retire_preparation("device_bind","succeeded","old","","new"));
+  assert(!retire_preparation("device_unbind","succeeded","op","","op"));
+  assert(abort_allowed("op","",""));
+  assert(abort_allowed("op","op","op"));
+  assert(!abort_allowed("old","new","new"));
+  assert(!abort_allowed("old","old","new"));
+  assert(!abort_allowed("","",""));
+  assert(retry_empty_abort("abort_data_reset","failed","Abort does not own current prepared baseline","op","",""));
+  assert(!retry_empty_abort("abort_data_reset","failed","Storage failure","op","",""));
+  assert(!retry_empty_abort("abort_data_reset","failed","Abort does not own current prepared baseline","op","new","new"));
+  assert(receipt_key("op", "prepare", "device_bind") != receipt_key("op", "commit", "device_bind"));
+  assert(receipt_key("op", "execute", "collector_reset") == receipt_key("op", "execute", "collector_reset"));
+}

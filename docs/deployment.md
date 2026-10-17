@@ -1,0 +1,58 @@
+# 部署与维护
+
+Eir 面向受信内网，默认无登录；复用现有 MQTT。支持内置 PostgreSQL 或外部 PostgreSQL。React 资源随服务提供，不依赖 CDN。
+
+## 默认 Compose
+
+```sh
+cp .env.example .env
+# 填写随机密码、MQTT、内网 EIR_PUBLIC_URL
+docker compose config --quiet
+docker compose up -d --build --wait
+```
+
+使用发布镜像时，在 `.env` 设置 `EIR_IMAGE=ghcr.io/cloverstd/eir:main` 或某个版本/提交标签，执行：
+
+```sh
+docker compose pull eir
+docker compose up -d --no-build --wait eir
+```
+
+`/healthz` 检查进程；`/readyz` 返回数据库和 MQTT 状态。容器非 root 运行，日志每文件 10 MB、保留 3 个。`EIR_PUBLIC_URL` 必须供 ESP32 访问，作为 OTA 下载链接来源。
+
+持久卷为 `postgres_data`、`firmware_data`、`documents_data`。正常停止使用 `docker compose down` 保留卷。数据库自动进行受锁保护的增量迁移，升级前应保留完整备份。
+
+## 外部数据库与 Home 风格部署
+
+`compose.external.yaml` 只运行 Eir。复制 `.env.external.example` 并填写独立数据库账号的 `DATABASE_URL`，使用：
+
+```sh
+docker compose -f compose.external.yaml up -d --build --wait
+```
+
+默认只监听本机回环地址；需要内网端口时设置 `EIR_BIND_ADDRESS`。数据库账号拥有自己的 Eir 库即可，无需超级用户。URL 中的密码必须编码，随机十六进制密码可直接使用。服务端未启用 TLS 时，仅在受信内网使用 `sslmode=disable`。
+
+已有 Traefik 和 Mosquitto 的 Home 风格目录：把 `compose.external.yaml` 安装为 `compose.yaml`，把 `compose.home.yaml` 安装为 `compose.override.yaml`，并保存私有 `.env`（0600）。现有网络名为 `traefik-net` 和 `mosquitto_default`；设置 `EIR_HOST=eir.example.lan`、`EIR_PUBLIC_URL=https://eir.example.lan`、`MQTT_URL=tcp://mosquitto:1883`。Compose 自动读取覆盖文件，不发布宿主机端口，使用既有 Traefik HTTPS。
+
+覆盖文件需要支持 `!reset` 的 Compose v2。正式更新只需在该目录拉取 Eir 镜像并执行 `docker compose up -d --no-build --wait eir`，数据库和 MQTT 不由此项目管理。一个 MQTT broker 只运行一个 Eir 实例，避免固定 client ID 冲突。
+
+医疗文件运行组件为官方 Alpine 的 `poppler-utils` 和 `libheif-tools`；不使用外部 OCR 或文档上传服务。可用 `EIR_DOCUMENT_MAX_BYTES` 配置文件大小上限，默认 26214400，最大 100 MiB。
+
+## 备份与恢复
+
+默认 Compose：
+
+```sh
+./scripts/backup.sh
+./scripts/restore.sh backups/<timestamp> --replace-database
+```
+
+新备份包含 `database.dump`、`firmwares.tar.gz`、`documents.tar.gz` 和格式版本 2。备份短暂暂停当前项目的 Eir，保持数据库与文件快照一致；数据库和 MQTT 持续运行，脚本结束或失败时恢复 Eir。恢复暂停 Eir 后替换当前库和文件，失败保持停止供排查。支持没有医疗文件包的旧备份。备份只允许当前用户读取，不包含 `.env`。
+
+外部数据库由其所在机器备份。维护顺序为：暂停 Eir；通过数据库机器生成 PostgreSQL custom dump；使用同项目的一次性 `tar` 容器备份 `/data/firmwares` 和 `/data/documents`；在退出处理函数中恢复 Eir。不要把默认脚本用于没有 `postgres` 服务的外部部署。SSH 使用现有运维身份，不分发私钥。恢复演练只在隔离 `eir-test-*` 项目执行。
+
+## 构建与发布
+
+GitHub Actions 对 PR 和主分支运行测试、隔离集成和固件构建。主分支镜像标签为 `main` 和 `sha-<commit>`；`vX.Y.Z` 发布应用版本，稳定版更新 `latest`。`firmware-vX.Y.Z` 发布固件，标签必须与工程内嵌版本一致。固件及应用分别发布，自动化只生成产物，升级由运维人员发起。
+
+需要可重现更新时使用具体提交标签或镜像 digest。数据库升级后回退程序不代表完成数据回滚，应结合备份恢复。

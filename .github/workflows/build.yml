@@ -1,0 +1,175 @@
+name: Build and publish
+on:
+  push:
+    branches: [main]
+    tags: ['v*', 'firmware-v*']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Go, Python and native firmware tests
+        run: |
+          go test -race ./...
+          go vet ./...
+          python3 -m unittest discover -s scripts -p 'test_*.py'
+          for source in firmware/tests/*_test.cpp; do
+            executable="$RUNNER_TEMP/$(basename "$source" .cpp)"
+            c++ -std=c++17 -Wall -Wextra -Werror "$source" -o "$executable"
+            "$executable"
+          done
+      - name: Frontend tests and production build
+        run: npm ci --prefix web && npm test --prefix web && npm run build --prefix web
+  integration:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres: ['17', '18']
+    env:
+      POSTGRES_IMAGE: postgres:${{ matrix.postgres }}-alpine
+      POSTGRES_DATA_DIR: ${{ matrix.postgres == '18' && '/var/lib/postgresql/18/docker' || '/var/lib/postgresql/data' }}
+      POSTGRES_VOLUME_TARGET: ${{ matrix.postgres == '18' && '/var/lib/postgresql' || '/var/lib/postgresql/data' }}
+      EIR_TEST_IMAGE: eir:ci
+      EIR_TEST_SKIP_BUILD: '1'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          load: true
+          tags: eir:ci
+          cache-from: type=gha,scope=integration
+          cache-to: type=gha,mode=max,scope=integration-${{ matrix.postgres }}
+      - name: Isolated legacy, lifecycle, body, health and MCP acceptance
+        run: |
+          ./scripts/integration.sh
+          ./scripts/lifecycle_integration.sh
+          ./scripts/body_integration.sh
+          ./scripts/health_integration.sh
+      - name: Preserve synthetic failure logs
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: test-logs-pg${{ matrix.postgres }}
+          path: /tmp/eir-test-*.log
+          retention-days: 14
+  firmware:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: espressif/esp-idf-ci-action@9d38657f3d789ca759b2b37aaf5ceffbc42c4f0d # v1
+        with:
+          path: firmware
+          esp_idf_version: v6.1
+          target: esp32c3
+          command: idf.py build
+      - name: Package and validate firmware
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+          REF_TAG: ${{ github.ref_name }}
+        run: |
+          docker run --rm -v "$PWD:/work" -w /work -e SOURCE_SHA -e REF_TAG espressif/idf:v6.1 bash -c 'tag=""; case "$REF_TAG" in firmware-v*) tag="$REF_TAG" ;; esac; python scripts/package_firmware.py --commit "$SOURCE_SHA" --tag "$tag"'
+          sudo chown -R "$(id -u):$(id -g)" dist
+          git archive --format=tar.gz --prefix=eir-source/ HEAD > dist/firmware/source.tar.gz
+          cd dist/firmware
+          sha256sum source.tar.gz >> SHA256SUMS
+          tar czf ../eir-esp32c3.tar.gz .
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: eir-esp32c3-${{ github.sha }}
+          path: dist/firmware/
+          retention-days: 30
+          if-no-files-found: error
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: eir-esp32c3-bundle-${{ github.sha }}
+          path: dist/eir-esp32c3.tar.gz
+          retention-days: 30
+          if-no-files-found: error
+  image:
+    needs: [checks, integration, firmware]
+    if: ${{ !startsWith(github.ref, 'refs/tags/firmware-v') }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        if: github.event_name != 'pull_request'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
+        id: meta
+        with:
+          images: ghcr.io/cloverstd/eir
+          tags: |
+            type=raw,value=main,enable=${{ github.ref == 'refs/heads/main' }}
+            type=sha,format=long
+            type=semver,pattern=v{{version}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') }}
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=release
+          cache-to: type=gha,mode=max,scope=release
+  firmware-release:
+    needs: [checks, integration, firmware]
+    if: startsWith(github.ref, 'refs/tags/firmware-v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: eir-esp32c3-${{ github.sha }}
+          path: firmware-release
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: eir-esp32c3-bundle-${{ github.sha }}
+          path: firmware-bundle
+      - name: Publish firmware release and matching sources
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" --notes 'ESP32-C3 firmware, first-flash package, SHA-256 manifest, licenses and corresponding source. Existing devices upgrade with eir_collector.bin through manual OTA.' firmware-release/eir_collector.bin firmware-release/factory.bin firmware-release/manifest.json firmware-release/SHA256SUMS firmware-release/source.tar.gz firmware-release/LICENSE firmware-release/THIRD_PARTY_NOTICES.md firmware-bundle/eir-esp32c3.tar.gz

@@ -1,0 +1,20 @@
+# Overlay for Home's existing Traefik and Mosquitto networks.
+# Install beside compose.external.yaml as compose.override.yaml on Home.
+services:
+  eir:
+    ports: !reset []
+    networks:
+      - traefik-net
+      - mosquitto_default
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: traefik-net
+      traefik.http.routers.eir.rule: Host(`${EIR_HOST:-eir.example.lan}`)
+      traefik.http.routers.eir.entrypoints: websecure
+      traefik.http.routers.eir.tls: "true"
+      traefik.http.services.eir.loadbalancer.server.port: "8080"
+networks:
+  traefik-net:
+    external: true
+  mosquitto_default:
+    external: true

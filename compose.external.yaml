@@ -1,0 +1,38 @@
+name: eir
+services:
+  eir:
+    image: ${EIR_IMAGE:-eir:local}
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${EIR_BIND_ADDRESS:-127.0.0.1}:${EIR_PORT:-8080}:8080"
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL to your existing Eir PostgreSQL database}
+      MQTT_URL: ${MQTT_URL:?Set MQTT_URL to your existing MQTT broker}
+      MQTT_USERNAME: ${MQTT_USERNAME:-}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:-}
+      MQTT_PREFIX: ${MQTT_PREFIX:-eir/v1}
+      EIR_PUBLIC_URL: ${EIR_PUBLIC_URL:?Set EIR_PUBLIC_URL to the LAN address reachable by ESP32}
+      HTTP_ADDR: :8080
+      WEB_DIR: /app/web/dist
+      FIRMWARE_DIR: /data/firmwares
+      DOCUMENT_DIR: /data/documents
+      EIR_DOCUMENT_MAX_BYTES: ${EIR_DOCUMENT_MAX_BYTES:-26214400}
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - firmware_data:/data/firmwares
+      - documents_data:/data/documents
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/readyz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+volumes:
+  firmware_data:
+  documents_data:

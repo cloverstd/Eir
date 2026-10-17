@@ -1,0 +1,12 @@
+.git
+.env
+.env.*
+**/node_modules
+web/dist
+firmware
+backups
+*.dump
+*.log
+bin
+
+.local

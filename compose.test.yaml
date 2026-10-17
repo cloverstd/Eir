@@ -1,0 +1,21 @@
+# Use with compose.yaml and a unique -p project name. Never point this at production volumes.
+services:
+  eir:
+    environment:
+      MQTT_URL: tcp://mosquitto:1883
+      MQTT_USERNAME: ""
+      MQTT_PASSWORD: ""
+      EIR_PUBLIC_URL: http://eir:8080
+    depends_on:
+      mosquitto:
+        condition: service_started
+  mosquitto:
+    image: eclipse-mosquitto:2
+    restart: unless-stopped
+    volumes:
+      - ./deploy/mosquitto.test.conf:/mosquitto/config/mosquitto.conf:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"

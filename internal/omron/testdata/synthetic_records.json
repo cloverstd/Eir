@@ -1,0 +1,38 @@
+[
+  {
+    "raw": "5f504619e919000000000a0000000000",
+    "user": 1,
+    "systolic": 120,
+    "diastolic": 80,
+    "pulse": 70,
+    "sequence": 10,
+    "device_time": "2025-06-15 09:00:00"
+  },
+  {
+    "raw": "69554b19ea19de0300000b0000000000",
+    "user": 1,
+    "systolic": 130,
+    "diastolic": 85,
+    "pulse": 75,
+    "sequence": 11,
+    "device_time": "2025-06-15 10:15:30"
+  },
+  {
+    "raw": "55464119eb19280500000c0000000000",
+    "user": 2,
+    "systolic": 110,
+    "diastolic": 70,
+    "pulse": 65,
+    "sequence": 12,
+    "device_time": "2025-06-15 11:20:40"
+  },
+  {
+    "raw": "64524819ec19720600000d0000000000",
+    "user": 2,
+    "systolic": 125,
+    "diastolic": 82,
+    "pulse": 72,
+    "sequence": 13,
+    "device_time": "2025-06-15 12:25:50"
+  }
+]
