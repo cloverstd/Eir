@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>摆放测试 · Eir 采集器</title>
+<style>
+:root{color-scheme:light;--ink:#163d31;--muted:#5b7168;--line:#d9e4dd;--green:#236d51;--amber:#9a5b12;--red:#a33c34}*{box-sizing:border-box}body{margin:0;background:#f2f5f0;color:var(--ink);font:15px/1.6 system-ui,-apple-system,sans-serif}main{max-width:1000px;margin:auto;padding:28px 20px 60px}a{color:var(--green)}h1{font-size:30px;letter-spacing:-1px;margin:14px 0 4px}h2{font-size:19px;margin:0}h3{font-size:17px;margin:0;overflow-wrap:anywhere}p{margin:6px 0}.muted,small{color:var(--muted)}.eyebrow{font-size:12px;letter-spacing:2px;font-weight:650}.panel,.device{background:#fff;border:1px solid var(--line);border-radius:16px;padding:20px;margin-top:16px}.intro{max-width:720px}.row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.tools{display:flex;align-items:end;gap:10px;flex-wrap:wrap;margin-top:18px}button,input,select{font:inherit;min-height:44px;border-radius:9px;border:1px solid #bacdc2;padding:9px 13px;background:white;color:var(--ink)}button{cursor:pointer;font-weight:600}button.primary{background:var(--ink);color:white;border-color:var(--ink)}button:disabled{opacity:.45;cursor:default}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid #64a98b;outline-offset:3px}label{display:flex;flex-direction:column;gap:5px;font-size:13px}.pill{display:inline-block;border-radius:20px;background:#eef4ef;padding:3px 10px;font-size:12px;color:var(--muted)}.status{margin-top:14px;font-size:14px}.error{color:var(--red);background:#fbeeea;border:1px solid #eccfc8;border-radius:10px;padding:12px;margin-top:16px}.error:empty{display:none}.wifi{background:#e5eee5;border-color:#ccdccc}.reading{font-size:34px;line-height:1.25;font-variant-numeric:tabular-nums;font-weight:650;letter-spacing:-1px}.reading span{font-size:14px;font-weight:450;letter-spacing:0;margin-left:6px}.good{color:var(--green)}.weak{color:var(--amber)}.poor{color:var(--red)}.stale{color:var(--muted)}.metrics{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:16px 0 8px}.metric{min-width:0}.metric small{display:block;margin-bottom:4px}.stats{font-size:12px;color:var(--muted);margin-top:7px;overflow-wrap:anywhere}.mac{font:13px/1.7 ui-monospace,monospace;overflow-wrap:anywhere}.device.focus{border-color:#528b70;box-shadow:0 0 0 1px #528b70}.focus-button{font-size:13px;padding:5px 10px;min-height:38px;flex-shrink:0}.device-head{display:flex;justify-content:space-between;align-items:start;gap:12px}.name{min-width:0}.tags{margin-top:5px;font-size:12px;color:var(--muted)}.bar{height:5px;border-radius:5px;background:#edf1ed;margin-top:9px;overflow:hidden}.bar i{display:block;height:100%;background:currentColor;transition:width .3s}.filter{margin:24px 0 6px;display:flex;align-items:end;gap:12px;flex-wrap:wrap}.filter label{flex:1;min-width:180px}.filter input{width:100%}.filter label.check{flex:0 0 auto;flex-direction:row;min-width:0}.check{display:flex;align-items:center;gap:6px;min-height:44px;font-size:14px}.check input{width:18px;min-height:18px}.list{display:grid;grid-template-columns:1fr 1fr;gap:14px}.device{margin:0;padding:18px}.empty{padding:32px 16px;text-align:center;color:var(--muted);grid-column:1/-1;border:1px dashed #c3d1c8;border-radius:14px}details{margin-top:13px;border-top:1px solid var(--line);padding-top:10px;font-size:13px}summary{cursor:pointer;color:var(--muted)}dl{display:grid;grid-template-columns:80px 1fr;gap:8px;margin-bottom:0}dt{color:var(--muted)}dd{margin:0;overflow-wrap:anywhere}.chart{margin-top:12px}.chart svg{display:block;width:100%;height:92px}.chart-label{font-size:11px;color:var(--muted)}.guide{font-size:13px}.guide ol{padding-left:22px;margin-bottom:8px}.offline .reading{color:var(--muted)}.offline .bar{opacity:.35}[hidden]{display:none!important}@media(max-width:640px){main{padding:20px 16px 40px}.list{grid-template-columns:1fr}.panel{padding:17px}.tools{gap:8px}.tools button{flex:1;white-space:nowrap}.tools label{width:100%}.tools select{width:100%}.metrics{gap:12px}.reading{font-size:30px}h1{font-size:27px}.filter{align-items:stretch}.check{width:100%}}
+</style>
+</head>
+<body><main>
+<a href="/">← 采集器首页</a>
+<header class="intro"><p class="eyebrow" style="margin-top:24px">ESP32 · 本机工具</p><h1>找到信号更稳的位置</h1><p class="muted">同时观察 Wi-Fi、体脂秤和血压计的信号。每移动一次，重新测试并比较平均值与波动。</p></header>
+<section class="panel" aria-label="测试控制"><div class="row"><h2>蓝牙 / Wi-Fi 摆放测试</h2><span class="pill" id="badge">正在连接采集器</span></div>
+<div class="tools"><label>测试时长<select id="duration"><option value="60">1 分钟</option><option value="180" selected>3 分钟</option><option value="300">5 分钟</option></select></label><button id="start" class="primary">开始测试</button><button id="restart" disabled>换位置，重新计数</button><button id="stop" disabled>停止</button></div>
+<p class="status" id="session" role="status">读取设备状态…</p><p class="muted" style="font-size:12px">每 2 秒刷新 · 最多保留 32 台 · 仅存在本机内存 · 正常采集继续运行</p></section>
+<div id="error" class="error" role="alert"></div>
+<section class="panel wifi" aria-label="Wi-Fi 信号"><div class="row"><div><p class="eyebrow">WI-FI</p><h2 id="ssid">正在读取</h2><p class="muted" id="wifi-info"></p></div><div><div class="reading" id="wifi-rssi">—</div><p id="wifi-level" class="muted"></p></div></div><p id="wifi-stats" class="stats"></p><div id="wifi-chart" class="chart"></div></section>
+<div class="filter"><label>附近的 BLE 设备<input id="filter" type="search" placeholder="按名称、MAC 或服务 UUID 筛选" autocomplete="off"></label><label class="check"><input type="checkbox" id="only-focus">只看关注设备</label></div>
+<p class="muted" id="count" style="font-size:13px;margin-bottom:12px"></p><div id="devices" class="list"></div>
+<section class="panel guide"><h2>怎样比较摆放位置</h2><ol><li>唤醒体脂秤和血压计，让它们广播；若被手机 App 占用，先退出 App。未广播的休眠设备无法被扫描到。</li><li>按名称或 MAC 找到目标，点击「关注」。已分配设备连接后会单独显示连接信号。</li><li>每个位置测试 1–3 分钟，比较同一来源的平均值、最弱值和曲线；移动后点「换位置，重新计数」。</li></ol><p>RSSI 越接近 0 越强：≥ −60 较强，−75 至 −60 良好，−85 至 −75 偏弱，低于 −85 很弱。这些只是比较参考，不能换算准确距离；最终请在实际摆放处完成一次称重和血压采集验证。</p><p class="muted">广播与连接信号分开统计。超过 10 秒未收到新样本会标为旧读数，可能是休眠、正在连接或超出范围。随机 MAC 可能变化；设备信息仅来自广播，未广播的型号等信息无法显示。ESP32-C3 扫描 BLE，不包含经典蓝牙设备。</p></section>
+</main>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+let latest = null, sessionKey = '', writing = false, lastSuccess = 0, chain = Promise.resolve();
+const focused = new Set(), cards = new Map(), history = new Map();
+function serial(fn) { const result = chain.then(fn, fn); chain = result.catch(() => {}); return result; }
+async function api(path, options = {}) {
+  const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 6000);
+  try { const response = await fetch(path, {...options, signal:controller.signal, cache:'no-store'}); if (!response.ok) throw new Error(await response.text()); return await response.json(); }
+  finally { clearTimeout(timer); }
+}
+function level(rssi) { return rssi >= -60 ? ['较强','good'] : rssi >= -75 ? ['良好','good'] : rssi >= -85 ? ['偏弱','weak'] : ['很弱','poor']; }
+function age(ms) { return ms < 1000 ? '刚刚' : `${Math.floor(ms / 1000)} 秒前`; }
+function summary(s) { return s ? `平均 ${s.mean.toFixed(1)} · 最弱 ${s.min} · 最强 ${s.max} dBm · ${s.count} 个样本` : '开始测试后积累统计'; }
+function chartTime() { return latest.active ? latest.uptime_ms : Math.min(latest.uptime_ms,latest.until_ms); }
+function key(d) { return `${d.address}/${d.address_type}`; }
+function addPoint(id, s, now) {
+  if (!s) return;
+  const points = history.get(id) || [];
+  if (!points.length || points[points.length-1].at !== s.at_ms) points.push({at:s.at_ms, value:s.rssi});
+  history.set(id, points.filter(p => p.at >= now - 120000).slice(-90));
+}
+function chart(el, ids, now) {
+  const width = el.clientWidth || 320;
+  const ns = 'http://www.w3.org/2000/svg', svg = document.createElementNS(ns,'svg');
+  svg.setAttribute('viewBox',`0 0 ${width} 90`); svg.setAttribute('role','img'); svg.setAttribute('aria-label','最近两分钟信号趋势，绿色广播，棕色连接，断线表示缺少样本');
+  const y = value => 8 + (1 - (Math.max(-100,Math.min(-30,value))+100)/70)*62;
+  for (const value of [-60,-85]) {
+    const line = document.createElementNS(ns,'path'); line.setAttribute('d',`M 0 ${y(value)} H ${width}`); line.setAttribute('stroke','#d9e4dd'); line.setAttribute('stroke-dasharray','3 4'); svg.append(line);
+    const label = document.createElementNS(ns,'text'); label.setAttribute('x','2'); label.setAttribute('y',y(value)-2); label.setAttribute('fill','#718779'); label.setAttribute('font-size','9'); label.textContent=value; svg.append(label);
+  }
+  ids.forEach((id,index) => {
+    const points = (history.get(id)||[]).filter(p=>p.at>=now-120000); let previous=null, path='';
+    for (const point of points) { const x = Math.max(0,Math.min(width,width*(1-(now-point.at)/120000))); path += `${!previous || point.at-previous.at>10000 ? 'M':'L'}${x.toFixed(1)} ${y(point.value).toFixed(1)} `; previous=point; }
+    const line=document.createElementNS(ns,'path');line.setAttribute('d',path);line.setAttribute('stroke',index?'#9a5b12':'#236d51');line.setAttribute('stroke-width','2');line.setAttribute('fill','none');svg.append(line);
+    if(previous){const dot=document.createElementNS(ns,'circle');dot.setAttribute('cx',Math.max(0,Math.min(width,width*(1-(now-previous.at)/120000))));dot.setAttribute('cy',y(previous.value));dot.setAttribute('r','2.5');dot.setAttribute('fill',index?'#9a5b12':'#236d51');svg.append(dot);}
+  });
+  const caption=document.createElement('p');caption.className='chart-label';caption.textContent=ids.length>1?'最近 2 分钟 · 绿：广播 / 棕：连接 · 缺测处断开':'最近 2 分钟 · 缺测处断开';el.replaceChildren(svg,caption);
+}
+function createCard(d) {
+  const el=document.createElement('article');el.className='device';
+  // All radio-provided values are inserted with textContent, never HTML.
+  el.innerHTML='<div class="device-head"><div class="name"><h3></h3><div class="mac"></div><div class="tags"></div></div><button class="focus-button" type="button"></button></div><div class="metrics"></div><div class="chart" hidden></div><details><summary>设备与广播信息</summary><dl></dl></details>';
+  el.querySelector('button').onclick=()=>{const id=key(d);if(focused.has(id))focused.delete(id);else focused.add(id);renderList();};return el;
+}
+function metric(title,s,active,connected=true) {
+  const el=document.createElement('div');el.className='metric';const fresh=active&&s&&s.age_ms<=10000&&connected;
+  const label=document.createElement('small');label.textContent=title;const value=document.createElement('div');value.className='reading '+(fresh?level(s.rssi)[1]:'stale');value.textContent=s?`${s.rssi}`:'—';if(s){const unit=document.createElement('span');unit.textContent='dBm';value.append(unit);}
+  const state=document.createElement('p');state.className='stats';state.textContent=!s?'等待信号':!active?`测试已停止 · ${age(s.age_ms)}`:!connected?`已断开 · ${age(s.age_ms)}的读数`:fresh?`${level(s.rssi)[0]} · ${age(s.age_ms)}`:`旧读数 · ${age(s.age_ms)}`;
+  const bar=document.createElement('div');bar.className='bar '+(fresh?level(s.rssi)[1]:'stale');const fill=document.createElement('i');fill.style.width=(s?Math.max(2,Math.min(100,(s.rssi+100)/70*100)):0)+'%';bar.append(fill);
+  const stat=document.createElement('p');stat.className='stats';stat.textContent=summary(s);el.append(label,value,state,bar,stat);return el;
+}
+function renderList() {
+  if(!latest)return;
+  const query=$('filter').value.trim().toLowerCase(), only=$('only-focus').checked;
+  const all=latest.devices; const visible=all.filter(d=>(!only||focused.has(key(d)))&&[d.name,d.address,...d.services,d.profile||'',d.hint].join(' ').toLowerCase().includes(query));
+  const score=d=>d.connected&&d.connection?d.connection.rssi:d.advertisement?d.advertisement.rssi:-150;
+  visible.sort((a,b)=>Number(focused.has(key(b)))-Number(focused.has(key(a)))||Number(b.configured)-Number(a.configured)||score(b)-score(a));
+  $('count').textContent=`发现 ${all.length} 台 · 显示 ${visible.length} 台${latest.evictions?' · 已达到容量，最久未出现的设备会被替换':''}`;
+  const shown=new Set(visible.map(key));for(const [id,el] of cards)if(!shown.has(id))el.remove();
+  for(const id of cards.keys())if(!all.some(d=>key(d)===id))cards.delete(id);
+  $('devices').querySelector('.empty')?.remove();
+  if(!visible.length){const empty=document.createElement('div');empty.className='empty';empty.textContent=all.length?'没有符合筛选条件的设备。':latest.active?'正在等待广播。请唤醒体脂秤或血压计，稍等几秒。':'点击「开始测试」，查看附近广播的 BLE 设备。';$('devices').append(empty);}
+  for(const d of visible){
+    const id=key(d), el=cards.get(id)||createCard(d);cards.set(id,el);el.classList.toggle('focus',focused.has(id));
+    el.querySelector('h3').textContent=d.name||(d.profile==='afu-wl-tz-a1'?'已分配体脂秤':d.profile==='omron-hem-7374t1'?'已分配血压计':'未广播名称');el.querySelector('.mac').textContent=d.address;
+    el.querySelector('.tags').textContent=`${d.configured?'已分配 · ':''}${d.connected?'当前已连接':d.hint} · ${d.address_type%2?'随机地址':'公共地址'}`;
+    const button=el.querySelector('button');button.textContent=focused.has(id)?'已关注':'关注';button.setAttribute('aria-pressed',focused.has(id));
+    const metrics=[metric('广播信号',d.advertisement,latest.active)];if(d.connection||d.connected)metrics.push(metric('连接信号',d.connection,latest.active,d.connected));
+    el.querySelector('.metrics').replaceChildren(...metrics);
+    const graph=el.querySelector('.chart');graph.hidden=!focused.has(id);if(!graph.hidden)chart(graph,[id+'/adv',id+'/conn'],chartTime());
+    const info=el.querySelector('dl');info.replaceChildren();
+    const eventNames={0:'可连接广播',1:'定向广播',2:'可扫描广播',3:'不可连接广播',255:'未收到广播'};
+    const rows=[['地址类型',`${d.address_type%2?'随机':'公共'}（${d.address_type}）`],['广播类型',eventNames[d.event_type]||`类型 ${d.event_type}`],['服务 UUID',d.services.join(', ')||'未广播'],['厂商编号',d.manufacturer_ids.map(x=>'0x'+x).join(', ')||'未广播'],['发射功率',d.tx_power===null?'未广播':`${d.tx_power} dBm`],['广播数据',d.advertisement_hex||'暂无'],['扫描响应',d.scan_response_hex||'暂无']];if(!d.payload_valid)rows.push(['解析提示','广播格式不完整或超过显示长度']);
+    for(const [name,value] of rows){const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=name;dd.textContent=value;info.append(dt,dd);} $('devices').append(el);
+  }
+}
+function render(data) {
+  const newKey=`${data.session_id}`;
+  if(newKey!==sessionKey || (latest&&data.uptime_ms<latest.uptime_ms)){history.clear();sessionKey=newKey;}
+  if(latest&&latest.wifi.bssid!==data.wifi.bssid)history.delete('wifi');
+  latest=data;
+  const retained=new Set(['wifi']);for(const d of data.devices){retained.add(key(d)+'/adv');retained.add(key(d)+'/conn');}
+  for(const id of history.keys())if(!retained.has(id))history.delete(id);
+  if(data.active){addPoint('wifi',data.wifi.stats,data.uptime_ms);for(const d of data.devices){addPoint(key(d)+'/adv',d.advertisement,data.uptime_ms);addPoint(key(d)+'/conn',d.connection,data.uptime_ms);}}
+  $('badge').textContent=data.active?'测试进行中':data.session_id?'已停止':'尚未开始';
+  $('session').textContent=!data.available?'设备正在升级或维护，测试已暂停。':data.active?`剩余 ${Math.ceil(data.remaining_ms/1000)} 秒 · ${data.scanning?'正在接收附近广播':data.connecting?'正在建立设备连接，扫描会自动恢复':'扫描暂歇，等待蓝牙空闲'}`:data.session_id?'本次结果已保留。移动到新位置后可重新测试。':'点击开始后持续接收广播，不需要先在 Eir 中添加设备。';
+  $('start').disabled=writing||data.active||!data.available;$('restart').disabled=writing||!data.session_id||!data.available;$('stop').disabled=writing||!data.active;
+  const w=data.wifi;$('ssid').textContent=w.connected?w.ssid:'Wi-Fi 未连接';$('wifi-info').textContent=w.connected?`信道 ${w.channel} · ${w.bssid}`:'若连接的是配网热点，这里显示的仍是 ESP32 到路由器的连接。';
+  $('wifi-rssi').textContent=w.connected?`${w.rssi} dBm`:'—';$('wifi-rssi').className='reading '+(w.connected?level(w.rssi)[1]:'stale');$('wifi-level').textContent=w.connected?`${level(w.rssi)[0]} · 当前信号`:'无可用读数';$('wifi-stats').textContent=summary(w.stats)+(data.session_id&&!data.active?' · 上次测试统计':'');
+  chart($('wifi-chart'),['wifi'],chartTime());renderList();
+}
+async function refresh() {
+  return serial(async()=>{try{const data=await api('/radio/status');render(data);lastSuccess=Date.now();$('error').textContent='';document.body.classList.remove('offline');}
+  catch(error){document.body.classList.add('offline');$('badge').textContent='连接中断';$('error').textContent=`无法读取采集器，以下为上次数据，恢复连接后会自动刷新。${lastSuccess?' 上次成功：'+new Date(lastSuccess).toLocaleTimeString():''}`;}});
+}
+async function command(seconds) {
+  writing=true;for(const id of ['start','restart','stop'])$(id).disabled=true;
+  try{await serial(()=>api('/radio/scan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({seconds})}));await refresh();}
+  catch(error){$('error').textContent='操作未确认：'+error.message;}
+  finally{writing=false;if(latest){$('start').disabled=latest.active||!latest.available;$('restart').disabled=!latest.session_id||!latest.available;$('stop').disabled=!latest.active;}}
+}
+$('start').onclick=$('restart').onclick=()=>command(Number($('duration').value));$('stop').onclick=()=>command(0);$('filter').oninput=renderList;$('only-focus').onchange=renderList;
+async function poll(){if(!document.hidden)await refresh();setTimeout(poll,2000);}poll();
+</script></body></html>

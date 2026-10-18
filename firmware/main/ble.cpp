@@ -1,5 +1,6 @@
 #include "eir.h"
 #include "ble_runtime.h"
+#include "radio_test.h"
 #include "afu_protocol.h"
 #include "esp_random.h"
 #include "esp_timer.h"
@@ -80,6 +81,7 @@ bool wait(int ms = 15000) {
 int gap(ble_gap_event *e, void *) {
   switch (e->type) {
   case BLE_GAP_EVENT_DISC: {
+    local_radio_discover(e->disc);
     afu_discover(e->disc);
     ble_hs_adv_fields f{};
     if (ble_hs_adv_parse_fields(&f, e->disc.data, e->disc.length_data))
@@ -138,7 +140,8 @@ int gap(ble_gap_event *e, void *) {
   return 0;
 }
 void scan() {
-  if (!ready || ble_connecting || upgrading || lifecycle_busy || !collection_enabled() || ble_gap_disc_active())
+  if (!ready || ble_connecting || upgrading || lifecycle_busy ||
+      (!collection_enabled() && !(local_radio_allowed() && local_radio_active())) || ble_gap_disc_active())
     return;
 #if !MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
   // This cuff supplies a zero SMP identity. Disable controller substitution
@@ -561,7 +564,8 @@ void worker(void *) {
     Job job{};
     bool explicit_job = xQueueReceive(jobs, &job, pdMS_TO_TICKS(1000));
     if (upgrading || lifecycle_busy || !collection_enabled()) {
-      ble_gap_disc_cancel();
+      if (local_radio_allowed() && local_radio_active()) scan();
+      else ble_gap_disc_cancel();
       if (explicit_job)
         event(job.id, job.type, "failed", "{}",
               "Collector is upgrading; retry with a new command after "
@@ -667,8 +671,11 @@ void ble_sample_signals(){
   if(handle==BLE_HS_CONN_HANDLE_NONE)return;
   int8_t rssi=127;if(ble_gap_conn_rssi(handle,&rssi))return;
   std::lock_guard<std::mutex> lock(bm);
-  if(cuff.conn==handle&&cuff.device_id==connected_id)
+  if(cuff.conn==handle&&cuff.device_id==connected_id) {
     signal_cache.record(connected_id,{rssi,esp_timer_get_time()/1000,true,"connection"});
+    for (const auto &d : assigned) if (d.id == connected_id)
+      local_radio_connection(d, rssi, esp_timer_get_time()/1000);
+  }
 }
 void ble_resume_scan(){scan();}
 std::string ble_scan_json() {

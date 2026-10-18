@@ -1,6 +1,7 @@
 #include "driver/gpio.h"
 #include "eir.h"
 #include "ble_runtime.h"
+#include "radio_test.h"
 #include "esp_app_desc.h"
 #include "esp_crt_bundle.h"
 #include "esp_event.h"
@@ -44,6 +45,7 @@ static void lifecycle_set(const std::string &value){std::lock_guard<std::mutex> 
 static std::atomic<bool> reset_prepared{false}, legacy_mode{false};
 bool lifecycle_bound() { auto j=cJSON_Parse(lifecycle_snapshot().c_str()); bool b=!str(j,"binding_id").empty(); cJSON_Delete(j); return b; }
 bool collection_enabled() { return !reset_prepared && (lifecycle_bound() || legacy_mode); }
+bool local_radio_allowed() { return !reset_prepared && !upgrading && !lifecycle_busy; }
 static void stamp(cJSON *j, const std::string &scope_override = "") {
   auto l=cJSON_Parse((scope_override.empty()?lifecycle_snapshot():scope_override).c_str());
   cJSON_DeleteItemFromObject(j,"protocol_version");cJSON_AddNumberToObject(j,"protocol_version",2);
@@ -767,8 +769,9 @@ static void provisioning() {
   esp_wifi_set_config(WIFI_IF_AP, &ap);
   error("Provisioning hotspot active");
 }
+extern const char radio_page_start[] asm("_binary_radio_html_start");
 static const char *page =
-    R"HTML(<!doctype html><html lang="zh-CN"><meta name="viewport" content="width=device-width,initial-scale=1"><meta charset="utf-8"><title>Eir 采集器</title><style>body{font:16px system-ui;max-width:640px;margin:24px auto;padding:16px;background:#f1f5f2;color:#18392e}input,button{padding:12px;margin:5px 0;width:100%;box-sizing:border-box}pre{white-space:pre-wrap;overflow-wrap:anywhere}button{background:#256a54;color:white;border:0;border-radius:8px}</style><h1>Eir 采集器</h1><pre id="status"></pre><h2>网络配置</h2><form id="form"><input name="ssid" placeholder="Wi-Fi SSID" required maxlength="32"><input name="password" type="password" placeholder="Wi-Fi 密码（留空保留）"><input name="mqtt_uri" placeholder="mqtt://主机:1883" required><input name="mqtt_username" placeholder="MQTT 用户名"><input name="mqtt_password" type="password" placeholder="MQTT 密码（留空保留）"><button>保存并重启</button></form><h2>蓝牙诊断</h2><button onclick="fetch('/scan',{method:'POST'})">扫描附近设备</button><pre id="scan"></pre><input id="device" placeholder="Eir 中的设备 UUID"><button onclick="fetch('/read',{method:'POST',body:JSON.stringify({device_id:device.value})})">读取指定已分配设备</button><a href="/logs">下载日志</a> · <a href="/backup">下载注册备份</a><h2>固件升级</h2><input id="file" type="file" accept=".bin"><input id="sha" placeholder="固件 SHA-256（64 位）"><button onclick="upload()">上传并升级</button><pre id="result"></pre><script>async function refresh(){document.getElementById("status").textContent=JSON.stringify(await(await fetch('/status')).json(),null,2);scan.textContent=JSON.stringify(await(await fetch('/scan')).json(),null,2)}form.onsubmit=async e=>{e.preventDefault();let r=await fetch('/config',{method:'POST',body:JSON.stringify(Object.fromEntries(new FormData(form)))});result.textContent=await r.text()};async function upload(){if(!file.files[0])return;let r=await fetch('/ota',{method:'POST',headers:{'X-SHA256':sha.value},body:file.files[0]});result.textContent=await r.text()}fetch("/config").then(r=>r.json()).then(c=>Object.entries(c).forEach(([k,v])=>{if(form.elements[k])form.elements[k].value=v}));refresh();setInterval(refresh,5000);</script></html>)HTML";
+    R"HTML(<!doctype html><html lang="zh-CN"><meta name="viewport" content="width=device-width,initial-scale=1"><meta charset="utf-8"><title>Eir 采集器</title><style>body{font:16px system-ui;max-width:640px;margin:24px auto;padding:16px;background:#f1f5f2;color:#18392e}input,button{padding:12px;margin:5px 0;width:100%;box-sizing:border-box}pre{white-space:pre-wrap;overflow-wrap:anywhere}button{background:#256a54;color:white;border:0;border-radius:8px}</style><h1>Eir 采集器</h1><p><a href="/radio">打开蓝牙 / Wi-Fi 摆放测试 →</a></p><pre id="status"></pre><h2>网络配置</h2><form id="form"><input name="ssid" placeholder="Wi-Fi SSID" required maxlength="32"><input name="password" type="password" placeholder="Wi-Fi 密码（留空保留）"><input name="mqtt_uri" placeholder="mqtt://主机:1883" required><input name="mqtt_username" placeholder="MQTT 用户名"><input name="mqtt_password" type="password" placeholder="MQTT 密码（留空保留）"><button>保存并重启</button></form><h2>蓝牙诊断</h2><button onclick="fetch('/scan',{method:'POST'})">扫描支持采集的设备</button><pre id="scan"></pre><input id="device" placeholder="Eir 中的设备 UUID"><button onclick="fetch('/read',{method:'POST',body:JSON.stringify({device_id:device.value})})">读取指定已分配设备</button><a href="/logs">下载日志</a> · <a href="/backup">下载注册备份</a><h2>固件升级</h2><input id="file" type="file" accept=".bin"><input id="sha" placeholder="固件 SHA-256（64 位）"><button onclick="upload()">上传并升级</button><pre id="result"></pre><script>async function refresh(){document.getElementById("status").textContent=JSON.stringify(await(await fetch('/status')).json(),null,2);scan.textContent=JSON.stringify(await(await fetch('/scan')).json(),null,2)}form.onsubmit=async e=>{e.preventDefault();let r=await fetch('/config',{method:'POST',body:JSON.stringify(Object.fromEntries(new FormData(form)))});result.textContent=await r.text()};async function upload(){if(!file.files[0])return;let r=await fetch('/ota',{method:'POST',headers:{'X-SHA256':sha.value},body:file.files[0]});result.textContent=await r.text()}fetch("/config").then(r=>r.json()).then(c=>Object.entries(c).forEach(([k,v])=>{if(form.elements[k])form.elements[k].value=v}));refresh();setInterval(refresh,5000);</script></html>)HTML";
 static std::string body(httpd_req_t *r, int max = 4096) {
   if (r->content_len > max)
     return "";
@@ -804,6 +807,26 @@ static esp_err_t http(httpd_req_t *r) {
   httpd_resp_set_hdr(r, "Cache-Control", "no-store");
   if (uri == "/")
     return httpd_resp_send(r, page, HTTPD_RESP_USE_STRLEN);
+  if (uri == "/radio") {
+    httpd_resp_set_type(r, "text/html; charset=utf-8");
+    return httpd_resp_send(r, radio_page_start, HTTPD_RESP_USE_STRLEN);
+  }
+  if (uri == "/radio/scan") {
+    auto input = cJSON_Parse(body(r, 128).c_str());
+    auto value = cJSON_GetObjectItem(input, "seconds");
+    bool valid = cJSON_IsNumber(value) && value->valuedouble >= 0 && value->valuedouble <= 300 && value->valuedouble == value->valueint;
+    int seconds = valid ? value->valueint : 0;
+    cJSON_Delete(input);
+    if (!valid) return httpd_resp_send_err(r, HTTPD_400_BAD_REQUEST, "seconds must be an integer from 0 to 300");
+    if (seconds && !local_radio_allowed()) {
+      httpd_resp_set_status(r, "409 Conflict");
+      return httpd_resp_sendstr(r, "Collector maintenance in progress; retry after completion");
+    }
+    local_radio_start(seconds);
+    httpd_resp_set_type(r, "application/json");
+    return httpd_resp_sendstr(r, "{\"ok\":true}");
+  }
+  if (uri == "/radio/status") return local_radio_status(r);
   if (uri == "/status") {
     auto s = status();
     httpd_resp_set_type(r, "application/json");
@@ -1071,18 +1094,18 @@ extern "C" void app_main() {
   }
   cJSON_Delete(j);
   httpd_config_t hc = HTTPD_DEFAULT_CONFIG();
-  hc.max_uri_handlers = 12;
+  hc.max_uri_handlers = 15;
   hc.stack_size = 8192;
   httpd_handle_t server;
   ESP_ERROR_CHECK(httpd_start(&server, &hc));
-  for (auto path : {"/", "/status", "/scan", "/logs", "/backup", "/config", "/scale-diagnostics"}) {
+  for (auto path : {"/", "/status", "/scan", "/logs", "/backup", "/config", "/scale-diagnostics", "/radio", "/radio/status"}) {
     httpd_uri_t u{};
     u.uri = path;
     u.method = HTTP_GET;
     u.handler = http;
     httpd_register_uri_handler(server, &u);
   }
-  for (auto path : {"/config", "/scan", "/read", "/ota", "/scale-diagnostics"}) {
+  for (auto path : {"/config", "/scan", "/read", "/ota", "/scale-diagnostics", "/radio/scan"}) {
     httpd_uri_t u{};
     u.uri = path;
     u.method = HTTP_POST;
@@ -1108,6 +1131,7 @@ extern "C" void app_main() {
       esp_ota_mark_app_valid_cancel_rollback();
       confirmed = true;
     }
+    if(tick%2==0)local_radio_tick();
     if(tick%5==0)publish_signals();
     if (mqtt_ok && tick % 10 == 0) {
       auto s = status();

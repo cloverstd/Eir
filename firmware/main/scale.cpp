@@ -1,6 +1,7 @@
 #include "afu_protocol.h"
 #include "durable_journal.h"
 #include "ble_runtime.h"
+#include "radio_test.h"
 #include "esp_random.h"
 #include "esp_timer.h"
 #include "freertos/queue.h"
@@ -294,8 +295,11 @@ void afu_sample_signals(){
     const auto &link=links[i];if(link.second==BLE_HS_CONN_HANDLE_NONE||link.first.empty())continue;
     int8_t rssi=127;if(ble_gap_conn_rssi(link.second,&rssi))continue;
     std::lock_guard<std::mutex> lock(scales_mutex);
-    if(connections[i].conn==link.second&&connections[i].device_id==link.first)
+    if(connections[i].conn==link.second&&connections[i].device_id==link.first) {
       signal_cache.record(link.first,{rssi,esp_timer_get_time()/1000,true,"connection"});
+      for (const auto &d : assigned) if (d.id == link.first)
+        local_radio_connection(d, rssi, esp_timer_get_time()/1000);
+    }
   }
 }
 void afu_pause(){for(auto &c:connections)while(c.busy)vTaskDelay(pdMS_TO_TICKS(50));}

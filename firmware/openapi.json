@@ -1,0 +1,358 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Eir ESP32 local placement diagnostics",
+    "version": "0.3.11",
+    "description": "Device-local HTTP only. No new Eir API or MQTT messages. Responses use Cache-Control: no-store. All diagnostic data is RAM-only; no authentication beyond the existing local-device access boundary and same-origin POST guard."
+  },
+  "servers": [
+    {
+      "url": "http://{collector_ip}",
+      "variables": {
+        "collector_ip": {
+          "default": "192.168.4.1",
+          "description": "Replace with the verified ESP32 local IP"
+        }
+      }
+    }
+  ],
+  "paths": {
+    "/radio": {
+      "get": {
+        "summary": "Open the embedded placement test page",
+        "responses": {
+          "200": {
+            "description": "HTML with embedded script and styles",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/radio/status": {
+      "get": {
+        "summary": "Read diagnostics without starting a test",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/radio/scan": {
+      "post": {
+        "summary": "Start a new bounded test or stop with zero seconds",
+        "description": "Positive seconds clears only diagnostic results; zero preserves results. Does not pair with unknown devices or stop normal collection. GET is not registered. Closing the page does not stop the bounded session.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "seconds": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 300
+                  }
+                },
+                "required": [
+                  "seconds"
+                ]
+              },
+              "example": {
+                "seconds": 180
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "description": ""
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed body, more than 128 bytes, missing or nonintegral seconds, or seconds outside 0..300"
+          },
+          "403": {
+            "description": "Rejected cross-origin POST"
+          },
+          "409": {
+            "description": "Cannot start during maintenance; stop remains allowed"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Stats": {
+        "type": "object",
+        "properties": {
+          "rssi": {
+            "type": "integer",
+            "description": "Latest valid RSSI in dBm"
+          },
+          "min": {
+            "type": "integer",
+            "description": "Weakest RSSI"
+          },
+          "max": {
+            "type": "integer",
+            "description": "Strongest RSSI"
+          },
+          "mean": {
+            "type": "number"
+          },
+          "count": {
+            "type": "integer",
+            "description": "Accepted samples in this session"
+          },
+          "age_ms": {
+            "type": "integer",
+            "description": "Age of latest sample"
+          },
+          "at_ms": {
+            "type": "integer",
+            "description": "Latest sample uptime in milliseconds"
+          }
+        },
+        "required": [
+          "rssi",
+          "min",
+          "max",
+          "mean",
+          "count",
+          "age_ms",
+          "at_ms"
+        ],
+        "nullable": true
+      },
+      "Wifi": {
+        "type": "object",
+        "properties": {
+          "connected": {
+            "type": "boolean",
+            "description": "ESP32 station is associated with an access point"
+          },
+          "rssi": {
+            "type": "integer",
+            "nullable": true
+          },
+          "ssid": {
+            "type": "string",
+            "description": ""
+          },
+          "bssid": {
+            "type": "string",
+            "description": ""
+          },
+          "channel": {
+            "type": "integer",
+            "description": ""
+          },
+          "stats": {
+            "$ref": "#/components/schemas/Stats"
+          }
+        },
+        "required": [
+          "connected",
+          "rssi",
+          "stats"
+        ]
+      },
+      "Device": {
+        "type": "object",
+        "properties": {
+          "address": {
+            "type": "string",
+            "description": "BLE MAC, most significant byte first"
+          },
+          "address_type": {
+            "type": "integer",
+            "description": "NimBLE address type; public=0, random=1"
+          },
+          "event_type": {
+            "type": "integer",
+            "description": "Legacy advertisement type, 255 if no advertisement received"
+          },
+          "age_ms": {
+            "type": "integer",
+            "description": ""
+          },
+          "advertisement": {
+            "$ref": "#/components/schemas/Stats"
+          },
+          "connection": {
+            "$ref": "#/components/schemas/Stats"
+          },
+          "configured": {
+            "type": "boolean",
+            "description": ""
+          },
+          "connected": {
+            "type": "boolean",
+            "description": "Actual current connection, independent of cached RSSI"
+          },
+          "profile": {
+            "type": "string",
+            "description": "Present when matched to an assigned device"
+          },
+          "name": {
+            "type": "string",
+            "description": "Broadcast name; empty when unavailable"
+          },
+          "payload_valid": {
+            "type": "boolean",
+            "description": "AD structure lengths valid and packets not truncated"
+          },
+          "services": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "description": "16, 32 or 128-bit UUID"
+            }
+          },
+          "manufacturer_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "description": "4-digit hexadecimal company identifier"
+            }
+          },
+          "tx_power": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Broadcast Tx Power in dBm"
+          },
+          "advertisement_hex": {
+            "type": "string",
+            "description": "Latest advertisement, at most 31 bytes"
+          },
+          "scan_response_hex": {
+            "type": "string",
+            "description": "Latest scan response, at most 31 bytes"
+          },
+          "hint": {
+            "type": "string",
+            "description": "Heuristic broadcast label, not an authenticated identity"
+          }
+        },
+        "required": [
+          "address",
+          "address_type",
+          "event_type",
+          "age_ms",
+          "advertisement",
+          "connection",
+          "configured",
+          "connected",
+          "name",
+          "payload_valid",
+          "services",
+          "manufacturer_ids",
+          "tx_power",
+          "advertisement_hex",
+          "scan_response_hex",
+          "hint"
+        ]
+      },
+      "Status": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "integer",
+            "description": "Incremented on each start, resets on reboot"
+          },
+          "uptime_ms": {
+            "type": "integer",
+            "description": ""
+          },
+          "until_ms": {
+            "type": "integer",
+            "description": "Automatic deadline or manual stop time"
+          },
+          "active": {
+            "type": "boolean",
+            "description": "Diagnostic sample recording is active"
+          },
+          "remaining_ms": {
+            "type": "integer",
+            "description": ""
+          },
+          "scanning": {
+            "type": "boolean",
+            "description": "Actual scanner status; may continue after diagnostics stop"
+          },
+          "available": {
+            "type": "boolean",
+            "description": "False during OTA/lifecycle maintenance or reset preparation"
+          },
+          "connecting": {
+            "type": "boolean",
+            "description": "Connection initiation may temporarily pause scanning"
+          },
+          "capacity": {
+            "type": "integer",
+            "description": "Maximum cached devices, currently 32"
+          },
+          "evictions": {
+            "type": "integer",
+            "description": "Cache replacements during this session"
+          },
+          "wifi": {
+            "$ref": "#/components/schemas/Wifi"
+          },
+          "devices": {
+            "type": "array",
+            "maxItems": 32,
+            "items": {
+              "$ref": "#/components/schemas/Device"
+            }
+          }
+        },
+        "required": [
+          "session_id",
+          "uptime_ms",
+          "until_ms",
+          "active",
+          "remaining_ms",
+          "scanning",
+          "available",
+          "connecting",
+          "capacity",
+          "evictions",
+          "wifi",
+          "devices"
+        ]
+      }
+    }
+  }
+}
