@@ -25,6 +25,7 @@ import {
   applyZoom,
   loadSeries,
   metricSeries,
+  familyMetricSeries,
   referenceFor,
   zoomRange,
 } from "./chartDomain";
@@ -140,6 +141,7 @@ function MetricPlot({
   member,
   overview = false,
   showMemberName = true,
+  familyMembers,
   range,
   domain,
 }: {
@@ -148,17 +150,28 @@ function MetricPlot({
   member: Row;
   overview?: boolean;
   showMemberName?: boolean;
+  familyMembers?: Row[];
   range?: TimeRange;
   domain?: TimeRange;
 }) {
-  const series = useMemo(() => metricSeries(rows, metric), [rows, metric]);
+  const series = useMemo(
+    () => familyMembers
+      ? familyMetricSeries(rows, metric, familyMembers)
+      : metricSeries(rows, metric),
+    [rows, metric, familyMembers],
+  );
   const reference = useMemo(
-    () => referenceFor(metric, member),
-    [metric, member],
+    () => familyMembers ? undefined : referenceFor(metric, member),
+    [metric, member, familyMembers],
   );
   const referenceHint = (
     <>
-      {reference ? (
+      {familyMembers ? (
+        <p>
+          颜色区分成员；血压实线为收缩压，虚线为舒张压。
+          选择成员后可查看个人参考范围和最新读数。
+        </p>
+      ) : reference ? (
         <>
           <a
             href={reference.url}
@@ -202,7 +215,7 @@ function MetricPlot({
           <TimeSeriesChart
             series={series}
             unit={units[metric]}
-            label={`${showMemberName ? `${member.name}的` : ""}${titles[metric]}趋势`}
+            label={`${familyMembers ? "全员" : showMemberName ? `${member.name}的` : ""}${titles[metric]}趋势`}
             memberName={showMemberName ? member.name : undefined}
             reference={reference}
             range={range}
@@ -252,6 +265,7 @@ export function MeasurementsPage({
   const [zoomFrom, setZoomFrom] = useQueryState("zoom_from", "", ["page"]),
     [zoomTo, setZoomTo] = useQueryState("zoom_to", "", ["page"]);
   const range = zoomRange(zoomFrom, zoomTo);
+  const familyOverview = overview && !member;
   const [editing, setEditing] = useState<Row | null>(null);
   // The rolling boundary is stable while paging, and advances on data refresh.
   const now = useMemo(() => Date.now(), [period, revision]);
@@ -275,7 +289,7 @@ export function MeasurementsPage({
   if (!overview && device) latestQuery.set("device_id", device);
   if (!overview && unassigned) latestQuery.set("unassigned", "true");
   const latest = useResource<Row[]>(
-    "latest:" + latestQuery,
+    familyOverview ? null : "latest:" + latestQuery,
     async (signal) =>
       (
         await api(
@@ -330,7 +344,10 @@ export function MeasurementsPage({
     : body
       ? ["weight", "body_fat"]
       : ["blood_pressure", "pulse"];
-  const times = curves.data.map((row) => Date.parse(row.measured_at));
+  const memberIDs = new Set(members.map((m) => m.id));
+  const times = curves.data
+    .filter((row) => !familyOverview || memberIDs.has(row.member_id))
+    .map((row) => Date.parse(row.measured_at));
   const min = times.reduce((a, b) => Math.min(a, b), Infinity),
     max = times.reduce((a, b) => Math.max(a, b), -Infinity);
   const domain = Number.isFinite(min)
@@ -379,7 +396,7 @@ export function MeasurementsPage({
             {datePicker}
             <InfoTip label="概览说明">
               <p>
-                读数卡显示各指标最新有效设备测量及实际测量时间，不受图表时间范围影响。
+                全员按指标对比各成员曲线；选择成员后，读数卡显示其各指标最新有效设备测量及实际测量时间，不受图表时间范围影响。
               </p>
               <p>
                 新测量自动同步。趋势保留原始测量点，通过时间选择器切换查看范围。
@@ -517,6 +534,26 @@ export function MeasurementsPage({
             <Link to="/members">添加家人</Link>
           </Button>
         </Empty>
+      ) : familyOverview ? (
+        <div className="grid min-w-0 gap-4 xl:grid-cols-2">
+          {metrics.map((metric) =>
+            curves.loading && !curves.data.length ? (
+              <Skeleton key={metric} className="h-96" />
+            ) : (
+              <MetricPlot
+                key={metric}
+                metric={metric}
+                rows={curves.data}
+                member={{ name: "全员" }}
+                familyMembers={members}
+                overview
+                showMemberName={false}
+                range={range}
+                domain={domain}
+              />
+            ),
+          )}
+        </div>
       ) : (
         displayGroups.map((m) => (
           <section key={m.id || "unassigned"} className="space-y-4">

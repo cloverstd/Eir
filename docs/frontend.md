@@ -25,3 +25,8 @@
 出生年月、完整生日、健康经历日期、指标测量时间、医疗文件检查日期和绑定生效时间统一使用 shadcn Calendar + Popover；日期时间额外选择小时和分钟，表单仍提交原有日期字符串或上海本地时间字符串。信号历史使用同一选择器风格选择其支持的 15 分钟、1 小时、24 小时、7 天时长。
 
 设备页的主区域为测量设备 Card 网格，宽屏右侧显示采集端 Card；维护、日志和操作进度按网格排布。每台测量设备在自身 Card 内展开配置与操作，成员绑定仍使用 Dialog。体脂秤固定编号在 Card、筛选器、称重记录、绑定列表和信号标题中一致显示。
+
+
+### 家庭概览合图验收
+
+`cd web && npm test && npm run build` 后，安装可用的 Playwright，运行 `node scripts/overview_ui_test.cjs`（仓库根目录）。可用 `NODE_PATH` 指向外部测试依赖，`EIR_TEST_BROWSER` 指定本机 Chromium/Chrome 路径，`EIR_OVERVIEW_SCREENSHOTS` 指定截图目录（默认 `/tmp/eir-overview-ui`）。脚本自建 loopback 夹具服务，只使用合成成员和测量，不连接 Eir、数据库或 MQTT。

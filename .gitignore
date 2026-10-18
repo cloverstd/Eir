@@ -2,6 +2,7 @@
 .env.*
 !.env.example
 !.env.external.example
+!.env.tunnel.example
 node_modules/
 web/dist/
 firmware/build/

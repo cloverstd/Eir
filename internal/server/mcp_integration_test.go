@@ -40,14 +40,17 @@ func TestMCPIntegration(t *testing.T) {
 		return out
 	}
 	members := fetch("members").([]any)
-	var member string
+	var member, other string
 	for _, m := range members {
 		row := m.(map[string]any)
+		if row["name"] == "Synthetic other" {
+			other = row["id"].(string)
+		}
 		if row["name"] == "Synthetic member" {
 			member = row["id"].(string)
 		}
 	}
-	if member == "" {
+	if member == "" || other == "" {
 		t.Fatal("synthetic test member missing")
 	}
 	ctx := context.Background()
@@ -69,8 +72,7 @@ func TestMCPIntegration(t *testing.T) {
 		name, path string
 		args       map[string]any
 	}{
-		{"list_members", "members", map[string]any{}},
-		{"get_member_profile", "members/" + member, map[string]any{"id": member}},
+		{"get_member_profile", "members/" + member, map[string]any{"member_id": member}},
 		{"list_health_history", "health/history?member_id=" + member, map[string]any{"member_id": member}},
 		{"list_measurements", "health/observations?member_id=" + member + "&page_size=1&page=2", map[string]any{"member_id": member, "page_size": 1, "page": 2}},
 		{"get_health_statistics", "health/statistics?member_id=" + member, map[string]any{"member_id": member}},
@@ -121,8 +123,8 @@ func TestMCPIntegration(t *testing.T) {
 		}
 	}
 	doc := documents[0].(map[string]any)
-	call("read_document_text", map[string]any{"id": doc["id"]})
-	result := call("read_document_pages", map[string]any{"id": doc["id"], "page": 1})
+	call("read_document_text", map[string]any{"member_id": member, "id": doc["id"]})
+	result := call("read_document_pages", map[string]any{"member_id": member, "id": doc["id"], "page": 1})
 	images := 0
 	for _, c := range result.Content {
 		if image, ok := c.(*mcp.ImageContent); ok && len(image.Data) > 0 {
@@ -132,7 +134,62 @@ func TestMCPIntegration(t *testing.T) {
 	if images != 1 {
 		t.Fatal("document image not returned")
 	}
-	call("get_device_status", map[string]any{})
+	// Ownership is enforced for both original text and rendered images.
+	for _, name := range []string{"read_document_text", "read_document_pages"} {
+		args := map[string]any{"member_id": other, "id": doc["id"]}
+		if name == "read_document_pages" {
+			args["page"] = 1
+		}
+		result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: args})
+		if err != nil {
+			t.Fatalf("%s failed before ownership validation: %v", name, err)
+		}
+		if result == nil || !result.IsError {
+			t.Fatalf("%s accepted another member's file", name)
+		}
+		metadata, _ := json.Marshal(result.StructuredContent)
+		if string(metadata) != "null" && string(metadata) != "{}" {
+			t.Fatalf("%s leaked file metadata", name)
+		}
+		for _, content := range result.Content {
+			text, ok := content.(*mcp.TextContent)
+			if !ok || text.Text != "读取失败：参数无效、记录不存在或服务暂不可用。" {
+				t.Fatalf("%s leaked file content", name)
+			}
+		}
+	}
+	for _, name := range []string{"list_health_history", "list_measurements", "list_documents", "get_health_statistics"} {
+		result := call(name, map[string]any{"member_id": other})
+		encoded, _ := json.Marshal(result.StructuredContent)
+		var data struct {
+			Data struct {
+				Items []any `json:"items"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(encoded, &data); err != nil {
+			t.Fatal(err)
+		}
+		if len(data.Data.Items) != 0 {
+			t.Fatalf("%s leaked another member's records: %s", name, encoded)
+		}
+	}
+	for _, name := range []string{"Synthetic member", "Synthetic", "%", "not a member"} {
+		result := call("find_member", map[string]any{"name": name})
+		encoded, _ := json.Marshal(result.StructuredContent)
+		var data struct {
+			Data []map[string]any `json:"data"`
+		}
+		if err := json.Unmarshal(encoded, &data); err != nil {
+			t.Fatal(err)
+		}
+		if name == "Synthetic member" {
+			if len(data.Data) != 1 || len(data.Data[0]) != 2 || data.Data[0]["id"] != member || data.Data[0]["name"] != name {
+				t.Fatalf("lookup returned excess or incorrect data: %s", encoded)
+			}
+		} else if len(data.Data) != 0 {
+			t.Fatalf("lookup was not exact: %s", encoded)
+		}
+	}
 	var wg sync.WaitGroup
 	for range 12 {
 		wg.Go(func() {

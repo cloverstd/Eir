@@ -5,6 +5,7 @@ export type ChartSeries = {
   name: string;
   data: [number, number | null][];
   color?: string;
+  lineType?: "solid" | "dashed";
 };
 export type Reference = {
   label: string;
@@ -129,6 +130,31 @@ export function metricSeries(rows: Row[], metric: Metric): ChartSeries[] {
         : Number(row[key]),
     ]),
   }));
+}
+// Member colors remain consistent across all household metric charts.
+const memberColors = ["#2563eb", "#c2410c", "#059669", "#9333ea", "#be185d", "#0e7490", "#a16207", "#4f46e5"];
+export function familyMetricSeries(rows: Row[], metric: Metric, members: Row[]): ChartSeries[] {
+  const names = new Map<string, number>();
+  const grouped = new Map<string, Row[]>();
+  for (const row of rows) {
+    if (!row.member_id) continue;
+    const points = grouped.get(row.member_id) || [];
+    points.push(row);
+    grouped.set(row.member_id, points);
+  }
+  return members.flatMap((member, index) => {
+    const occurrence = (names.get(member.name) || 0) + 1;
+    names.set(member.name, occurrence);
+    const duplicate = members.some((other) => other.id !== member.id && other.name === member.name);
+    const label = duplicate ? `${member.name}（${occurrence}）` : member.name;
+    return metricSeries(grouped.get(member.id) || [], metric).map((series, part) => ({
+      ...series,
+      id: `${member.id}:${series.id}`,
+      name: metric === "blood_pressure" ? `${label} · ${series.name}` : label,
+      color: memberColors[index] || `hsl(${Math.round(index * 137.508) % 360}, 65%, 42%)`,
+      lineType: part === 1 ? "dashed" as const : "solid" as const,
+    }));
+  });
 }
 export function zoomRange(from: string, to: string): TimeRange | undefined {
   const a = Date.parse(from),

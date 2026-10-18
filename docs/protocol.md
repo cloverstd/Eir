@@ -119,3 +119,11 @@ Web 全站共用 `/api/v1/events/stream` 一条 SSE 连接。`change` 合并触�
 `GET /devices`、设备详情与新增设备响应增加可空的只读字段 `scale_number`（整数）。schema 6 自动为体脂秤分配并持久化编号，UI 使用 `S` 前缀及至少三位数字；创建请求不能指定编号，血压计为空。该字段独立于 BLE 身份及 MQTT 生命周期作用域。
 
 Web URL 的 `period` 新增 `180`（最近半年）和 `365`（最近一年），分别按上海时间的 6／12 个自然月计算；`30`／`90` 保持天数窗口。日历自定义范围仍保存 `period=custom&from=YYYY-MM-DD&to=YYYY-MM-DD`，现有 HTTP 时间边界与日期表单字段格式保持兼容。
+
+## 按成员 MCP 与私有 ChatGPT Tunnel
+
+`/mcp` 继续使用无状态 Streamable HTTP，工具保持只读。健康数据、统计和文档工具必须提供 `member_id`，不能通过空筛选查询全员；`find_member` 仅以必填完整姓名精确查找 ID/姓名，不返回资料。移除 `list_members`、`get_device_status`，`get_member_profile` 的参数由 `id` 改为 `member_id`。文件读取额外校验 `id` 的成员归属。REST 的全员查询和设备管理语义不变，没有数据库迁移。
+
+`compose.tunnel.yaml` 可选接入官方 Secure MCP Tunnel，通过出站 HTTPS 转发到本机 `/mcp`；不开放公网端口，不放宽 Origin 校验。页面响应原始图片合计限制为 6 MiB，以满足 tunnel 编码后的信封限制。配置和工具调用示例见 [MCP 接入](mcp.md)。
+
+家庭概览“全员”按指标合并成员曲线，原始测量仍按 member_id 隔离，未归属数据不混入家庭曲线。全员不请求/显示最新值卡片；选择成员后显示个人最新值和适用参考范围，时间范围、URL 和自动刷新语义保留。

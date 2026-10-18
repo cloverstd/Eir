@@ -94,6 +94,7 @@ export function TimeSeriesChart({
         },
         grid: { left: 54, right: 24, top: 24, bottom: 60 },
         legend: {
+          type: "scroll",
           bottom: 0,
           itemWidth: 14,
           itemHeight: 7,
@@ -172,7 +173,7 @@ export function TimeSeriesChart({
           connectNulls: false,
           smooth: false,
           itemStyle: { color: s.color || colors[index % colors.length] },
-          lineStyle: { width: 2 },
+          lineStyle: { width: 2, type: s.lineType || "solid" },
           ...(index === 0 && reference?.band
             ? {
                 markArea: {

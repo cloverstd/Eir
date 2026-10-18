@@ -24,7 +24,7 @@ docker compose up -d --build --wait
 
 - [部署、升级与备份](docs/deployment.md)
 - [健康档案、文件与 API](docs/health.md)
-- [只读 MCP 接入](docs/mcp.md)
+- [按成员只读 MCP 与 ChatGPT Tunnel 接入](docs/mcp.md)
 - [ESP32 固件与手动 OTA](docs/firmware.md)
 - [设备生命周期](docs/lifecycle.md)
 - [协议](docs/protocol.md)
