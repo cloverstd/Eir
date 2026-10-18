@@ -1,3 +1,4 @@
+import { rangeBounds } from "./dateDomain.ts";
 export const metricNames: Record<string, string> = {
   height: "身高",
   weight: "体重",
@@ -32,6 +33,8 @@ export function healthQuery(
   to = "",
   group = "day",
   source = "",
+  period = from || to ? "custom" : "all",
+  now = Date.now(),
 ) {
   const q = new URLSearchParams({
     member_id: member,
@@ -41,14 +44,9 @@ export function healthQuery(
   });
   if (kind) q.set("kind", kind);
   if (source) q.set("source", source);
-  if (from) q.set("from", new Date(from + "T00:00:00+08:00").toISOString());
-  if (to)
-    q.set(
-      "to",
-      new Date(
-        new Date(to + "T00:00:00+08:00").getTime() + 86400000,
-      ).toISOString(),
-    );
+  const bounds = rangeBounds(period, from, to, now);
+  if (bounds.from) q.set("from", bounds.from);
+  if (bounds.to) q.set("to", bounds.to);
   return q.toString();
 }
 export function memberAge(

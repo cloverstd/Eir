@@ -53,3 +53,10 @@
 - [390px 家庭概览](images/redesign-overview-390.jpg)、[1440px 家庭概览](images/redesign-overview-1440.jpg)、[1920px 设备列表](images/redesign-devices-1920.jpg)。截图仅含合成数据，各截图取自独立的界面演练步骤。
 
 本次没有生产部署、固件修改或实机 BLE 验收。新增接口、SSE 心跳与页面 URL 语义见 `protocol.md`，开发及隔离测试方式见 `frontend.md`。
+
+## 时间选择器、体脂秤编号与 Card 布局（2026-10-18）
+
+- 前端统一使用 shadcn Calendar／Popover，支持 30 天、90 天、半年、一年快捷范围及自定义日期；生日年月、具体日期、指标测量时间、医疗文件日期、绑定生效时间均使用选择器。信号范围保留其七天留存支持的时长。设备页使用测量设备网格与右侧采集端 Card。
+- 前端 29 项测试覆盖自然月月底／闰年、不同浏览器时区、旧 URL 兼容和编号标签；Go race／vet 与 Python 测试通过。隔离数据库验证版本五旧秤补号、重复启动、解绑、删除不复用；健康档案回归额外验证真实备份恢复后编号及序列继续正确。
+- 浏览器使用合成数据验证半年／一年 URL、自定义日期重新选择、390px 日历无横向溢出、出生年月保存、日期及小时分钟以上海时间保存、弹窗内选择绑定时间、多秤筛选和 Card 内展开。页面中已无原生 date／month／datetime-local／time 输入框；表单字段格式保持兼容。
+- [1440px 日历面板](images/date-picker-1440.jpg)、[390px 日历面板](images/date-picker-390.jpg)、[1920px 多设备 Card](images/device-cards-1920.jpg)。本节均为软件和合成夹具验收，未操作真实 BLE 设备。

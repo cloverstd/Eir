@@ -56,6 +56,10 @@ HTTP `GET /api/v1/signals/latest` 可按 `collector_id,kind,device_id` 筛选；
 
 ## REST
 
+ESP32 固件 0.3.11 新增独立的本机诊断页 `GET /radio`、状态 `GET /radio/status` 和测试控制 `POST /radio/scan`，不属于 Eir REST API。控制请求为 `{"seconds":180}`，整数范围 0–300；0 停止并保留结果，正数清空诊断缓存后开始新一轮，最长五分钟。错误请求返回 400，维护中开始测试返回 409，跨源写入沿用设备本机的 Origin 检查。状态和页面禁用缓存，GET 不启动测试。详细数据结构见 [`firmware/openapi.json`](../firmware/openapi.json)，操作及缓存边界见 [固件说明](firmware.md#本机蓝牙--wi-fi-摆放测试0311)。
+
+新接口返回本机运行时间、测试会话和截止时间、实际扫描状态、Wi-Fi 信息及附近 BLE 列表。广播与连接分别提供 `rssi/min/max/mean/count/age_ms/at_ms`，无样本时为 null；时间均为本次启动的单调毫秒数。`active` 表示是否记录诊断样本，`scanning` 表示物理扫描状态，停止测试后正常采集仍可能扫描。`connected` 是响应时实际连接状态，不能由旧连接 RSSI 推断当前连接。附近设备和广播详情不进入 MQTT、Eir OpenAPI 或健康数据队列，原有 `/scan` 和 MQTT scan 的支持设备筛选保持兼容。
+
 完整请求、响应及筛选定义由 `/api/v1/openapi.json` 提供。API和前端同源，拒绝跨源写入；不设置用户登录。CSV采用UTF-8 BOM，保护名字/备注的公式前缀。原始记录不可通过PATCH改写；仅归属和备注可改，保留修改审计。
 
 
@@ -109,3 +113,7 @@ REST 查询 `kind=body_composition` 返回体重和估算值及其状态；未�
 Web 全站共用 `/api/v1/events/stream` 一条 SSE 连接。`change` 合并触发当前页面重新查询，`signals` 只使信号数据失效，`heartbeat` 每 20 秒报告连接活性；连接恢复和页面重新可见时补读。断线及超过 45 秒无活动的代理连接采用有界退避重连，断线期间每 30 秒兜底读取，保留上次成功结果。查询支持取消与旧响应隔离，自动更新保留未保存表单、分页、图例、缩放及设备展开状态。
 
 页面 URL 的 `zoom_from`、`zoom_to` 使用 RFC3339 毫秒时间。图表仍保留完整基础数据范围，记录表和 CSV 将当前视野转为 API 的半开时间区间；末端毫秒包含在所选范围内。原有日期筛选、列表分页和统计接口继续兼容。设备列表另提供可空的 `last_measured_at` 用于摘要显示，不用添加时间冒充最近测量时间。
+
+`GET /devices`、设备详情与新增设备响应增加可空的只读字段 `scale_number`（整数）。schema 6 自动为体脂秤分配并持久化编号，UI 使用 `S` 前缀及至少三位数字；创建请求不能指定编号，血压计为空。该字段独立于 BLE 身份及 MQTT 生命周期作用域。
+
+Web URL 的 `period` 新增 `180`（最近半年）和 `365`（最近一年），分别按上海时间的 6／12 个自然月计算；`30`／`90` 保持天数窗口。日历自定义范围仍保存 `period=custom&from=YYYY-MM-DD&to=YYYY-MM-DD`，现有 HTTP 时间边界与日期表单字段格式保持兼容。

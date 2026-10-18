@@ -1,7 +1,8 @@
+import { DurationPicker } from "./components/DatePicker";
+import { deviceLabel } from "./bodyDomain";
 import { Button } from "./components/ui/button";
 import { Label } from "./components/ui/label";
 import { Card } from "./components/ui/card";
-import { SelectField } from "./components/forms";
 import { createContext, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router";
@@ -196,7 +197,9 @@ export function SignalHistory({
         <h2 className="min-w-0 break-words text-base font-semibold tracking-tight">
           信号趋势 ·{" "}
           {kind === "ble"
-            ? devices.find((d) => d.id === device)?.name
+            ? devices.find((d) => d.id === device)
+              ? deviceLabel(devices.find((d) => d.id === device)!)
+              : "已移除设备"
             : collectors.find((c) => c.id === collector)?.name}{" "}
           · {kind === "ble" ? "蓝牙" : "Wi-Fi"}
         </h2>
@@ -214,21 +217,7 @@ export function SignalHistory({
         <>
           <Label className="grid min-w-0 gap-2 text-sm">
             时间范围
-            <SelectField
-              value={range}
-              onChange={(e) => setRange(e.target.value)}
-            >
-              {[
-                ["15m", "最近 15 分钟"],
-                ["1h", "最近 1 小时"],
-                ["24h", "最近 24 小时"],
-                ["7d", "最近 7 天"],
-              ].map(([v, text]) => (
-                <option value={v} key={v}>
-                  {text}
-                </option>
-              ))}
-            </SelectField>
+            <DurationPicker value={range} onChange={setRange} />
           </Label>
           <p className="text-sm leading-6 text-muted-foreground">
             每 5 秒采样，保留 7 天。信号等级用于比较摆放位置。

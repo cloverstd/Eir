@@ -13,7 +13,12 @@ import type { Row } from "./api";
 import { useResource } from "./realtime";
 import { useQueryState } from "./routing";
 import { measurementCorrection, measurementQuery } from "./domain";
-import { bodyFatStatus, bodyFatValue, scaleProfile } from "./bodyDomain";
+import {
+  bodyFatStatus,
+  bodyFatValue,
+  scaleProfile,
+  deviceLabel,
+} from "./bodyDomain";
 import {
   applyZoom,
   loadSeries,
@@ -25,7 +30,7 @@ import type { Metric, TimeRange } from "./chartDomain";
 import { TimeSeriesChart } from "./components/TimeSeriesChart";
 import { SelectField, CheckboxField, Empty } from "./components/forms";
 import { Button } from "./components/ui/button";
-import { Input } from "./components/ui/input";
+import { DateRangePicker } from "./components/DatePicker";
 import { Textarea } from "./components/ui/textarea";
 import { Label } from "./components/ui/label";
 import {
@@ -381,47 +386,26 @@ export function MeasurementsPage({
                   )
                   .map((d) => (
                     <option key={d.id} value={d.id}>
-                      {d.name}
+                      {deviceLabel(d)}
                     </option>
                   ))}
               </SelectField>
             </Label>
           </>
         )}
-        <Label className="grid w-full gap-2 text-xs sm:w-40">
+        <Label className="grid w-full gap-2 text-xs sm:w-auto">
           时间范围
-          <SelectField
-            value={period}
-            onChange={(e) => setPeriod(e.target.value)}
-          >
-            <option value="7">最近 7 天</option>
-            <option value="30">最近 30 天</option>
-            <option value="90">最近 90 天</option>
-            <option value="all">全部时间</option>
-            <option value="custom">自定义范围</option>
-          </SelectField>
+          <DateRangePicker
+            period={period}
+            from={from}
+            to={to}
+            onChange={(value) => {
+              setPeriod(value.period);
+              setFrom(value.from);
+              setTo(value.to);
+            }}
+          />
         </Label>
-        {period === "custom" && (
-          <>
-            <Label className="grid gap-2 text-xs">
-              开始日期
-              <Input
-                type="date"
-                value={from}
-                onChange={(e) => setFrom(e.target.value)}
-              />
-            </Label>
-            <Label className="grid gap-2 text-xs">
-              结束日期
-              <Input
-                type="date"
-                min={from}
-                value={to}
-                onChange={(e) => setTo(e.target.value)}
-              />
-            </Label>
-          </>
-        )}
         {!overview && (
           <Label className="flex h-9 items-center gap-2">
             <CheckboxField
@@ -590,7 +574,11 @@ export function MeasurementsPage({
                       <TableCell>
                         {row.member_name || "待归属"}
                         <small className="block text-xs text-muted-foreground">
-                          {row.device_name}
+                          {devices.find((d) => d.id === row.device_id)
+                            ? deviceLabel(
+                                devices.find((d) => d.id === row.device_id)!,
+                              )
+                            : row.device_name}
                         </small>
                       </TableCell>
                       {body ? (
@@ -685,7 +673,10 @@ export function MeasurementsPage({
           <DialogHeader>
             <DialogTitle>测量详情与归属</DialogTitle>
             <DialogDescription>
-              {editing?.device_name} · {date(editing?.measured_at)}
+              {editing && devices.find((d) => d.id === editing.device_id)
+                ? deviceLabel(devices.find((d) => d.id === editing!.device_id)!)
+                : editing?.device_name}{" "}
+              · {date(editing?.measured_at)}
             </DialogDescription>
           </DialogHeader>
           {editing && (

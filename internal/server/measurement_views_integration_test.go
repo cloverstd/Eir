@@ -35,7 +35,7 @@ func TestMeasurementViewsIntegration(t *testing.T) {
 	if err = db.Migrate(ctx); err != nil {
 		t.Fatal(err)
 	}
-	member, second, cuff, scale := ID(), ID(), ID(), ID()
+	member, second, cuff, scale, secondScale := ID(), ID(), ID(), ID(), ID()
 	collector := "eir-test-ui-" + ID()
 	exec := func(sql string, args ...any) {
 		t.Helper()
@@ -47,6 +47,8 @@ func TestMeasurementViewsIntegration(t *testing.T) {
 	exec(`INSERT INTO collectors(id,name,location,protocol_version,last_seen,status) VALUES($1,'客厅采集端','客厅',2,now(),'{"online":true,"firmware_version":"test-ui","capabilities":{"max_scales":2,"signals":true}}')`, collector)
 	exec(`INSERT INTO devices(id,name,collector_id,address,profile,model) VALUES($1,'客厅血压计',$3,$4,'omron-hem-7374t1','HEM-7374T1'),($2,'家庭体脂秤',$3,$5,'afu-wl-tz-a1','AFU-WL-TZ-A1')`, cuff, scale, collector, "02:"+cuff[:2]+":00:00:00:01", "02:"+scale[:2]+":00:00:00:02")
 	exec(`INSERT INTO bindings(device_id,user_slot,member_id,effective_from) VALUES($1,1,$3,'2020-01-01'),($2,0,$3,'2020-01-01')`, cuff, scale, member)
+	exec(`INSERT INTO devices(id,name,collector_id,address,profile,model) VALUES($1,'卧室体脂秤',$2,$3,'afu-wl-tz-a1','AFU-WL-TZ-A1')`, secondScale, collector, "02:"+secondScale[:2]+":00:00:00:03")
+	exec(`INSERT INTO bindings(device_id,user_slot,member_id,effective_from) VALUES($1,0,$2,'2020-01-01')`, secondScale, second)
 	// More than one page, including repeated timestamps to test the ID tie-breaker.
 	exec(`WITH inserted AS (
 	 INSERT INTO measurements(fingerprint,device_id,collector_id,user_slot,kind,record_sequence,device_time,measured_at,timezone,member_id,raw_data,parser_version,raw_flags)
@@ -55,11 +57,15 @@ func TestMeasurementViewsIntegration(t *testing.T) {
 	insertBody := func(who string, at any, valid bool, status string, weight, fat int) string {
 		t.Helper()
 		id := ID()
+		source := scale
+		if who == second {
+			source = secondScale
+		}
 		raw := "ac298069117002000540000a000000000029d51b"
 		if !valid {
 			raw = "ac290069117002000540000a000000000029d51b"
 		}
-		exec(`INSERT INTO measurements(id,fingerprint,device_id,collector_id,user_slot,kind,device_time,measured_at,timezone,member_id,raw_data,parser_version,raw_flags) VALUES($1::uuid,$1::text,$2,$3,0,'body_composition','synthetic',$4,'Asia/Shanghai',$5,decode($6,'hex'),'synthetic',0)`, id, scale, collector, at, who, raw)
+		exec(`INSERT INTO measurements(id,fingerprint,device_id,collector_id,user_slot,kind,device_time,measured_at,timezone,member_id,raw_data,parser_version,raw_flags) VALUES($1::uuid,$1::text,$2,$3,0,'body_composition','synthetic',$4,'Asia/Shanghai',$5,decode($6,'hex'),'synthetic',0)`, id, source, collector, at, who, raw)
 		exec(`INSERT INTO body_composition(measurement_id,measurement_session_id,weight_grams,adc_index,body_fat_pct,body_fat_status) VALUES($1::uuid,$1::text,$2,0,$3,$4)`, id, weight*1000, fat, status)
 		return id
 	}

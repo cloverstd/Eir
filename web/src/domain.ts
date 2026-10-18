@@ -1,3 +1,4 @@
+import { rangeBounds } from "./dateDomain.ts";
 /** API boundaries use Shanghai calendar days regardless of the browser's timezone. */
 export interface MeasurementFilters {
   kind?: string;
@@ -24,18 +25,9 @@ export function measurementQuery(
   if (member) q.set("member_id", member);
   if (device) q.set("device_id", device);
   if (unassigned) q.set("unassigned", "true");
-  if (period !== "custom" && period !== "all")
-    q.set("from", new Date(now - Number(period) * 86400000).toISOString());
-  else if (period === "custom") {
-    if (from) q.set("from", new Date(from + "T00:00:00+08:00").toISOString());
-    if (to)
-      q.set(
-        "to",
-        new Date(
-          new Date(to + "T00:00:00+08:00").getTime() + 86400000,
-        ).toISOString(),
-      );
-  }
+  const bounds = rangeBounds(period, from, to, now);
+  if (bounds.from) q.set("from", bounds.from);
+  if (bounds.to) q.set("to", bounds.to);
   return q.toString();
 }
 export function chartDay(value: string): string {

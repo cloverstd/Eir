@@ -1,3 +1,4 @@
+import { DateField } from "./components/DatePicker";
 import { Input } from "./components/ui/input";
 import { Label } from "./components/ui/label";
 import {
@@ -11,11 +12,18 @@ import {
 import { SelectField, CheckboxField } from "./components/forms";
 import { useEffect, useState } from "react";
 import type React from "react";
-import { Plus, Users, Radio, Scale, HeartPulse } from "lucide-react";
+import {
+  Plus,
+  Users,
+  Radio,
+  Scale,
+  HeartPulse,
+  ChevronDown,
+} from "lucide-react";
 import { api, date } from "./api";
 import type { Row } from "./api";
 import { useResource } from "./realtime";
-import { scaleProfile } from "./bodyDomain";
+import { scaleProfile, scaleNumber, deviceLabel } from "./bodyDomain";
 import { isHistoryStart } from "./domain";
 import { SignalProvider, SignalValue, SignalHistory } from "./signals";
 import {
@@ -27,14 +35,20 @@ import {
 } from "./lifecycle";
 import { Empty, Disclosure } from "./components/forms";
 import { Button } from "./components/ui/button";
-import { Card } from "./components/ui/card";
-import { Badge } from "./components/ui/badge";
 import {
-  Accordion,
-  AccordionItem,
-  AccordionTrigger,
-  AccordionContent,
-} from "./components/ui/accordion";
+  Card,
+  CardHeader,
+  CardContent,
+  CardFooter,
+  CardTitle,
+  CardDescription,
+} from "./components/ui/card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "./components/ui/collapsible";
+import { Badge } from "./components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -63,6 +77,96 @@ function safeDebugURL(s: Row | undefined) {
     const u = new URL(s.debug_url || (s.ip ? `http://${s.ip}` : ""));
     if (["http:", "https:"].includes(u.protocol)) return u.href;
   } catch {}
+}
+function MeasurementDeviceCard({
+  device,
+  collector,
+  members,
+  children,
+}: {
+  device: Row;
+  collector?: Row;
+  members: string;
+  children: React.ReactNode;
+}) {
+  const code = scaleNumber(device);
+  return (
+    <Collapsible asChild>
+      <Card className="min-w-0 gap-4 py-5 shadow-none">
+        <CardHeader className="gap-3 px-5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="shrink-0 rounded-lg bg-muted p-2.5">
+                {device.profile === scaleProfile ? (
+                  <Scale className="size-5" />
+                ) : (
+                  <HeartPulse className="size-5" />
+                )}
+              </div>
+              <div className="min-w-0">
+                <CardTitle className="truncate text-base">
+                  {device.name}
+                </CardTitle>
+                <CardDescription className="mt-1 text-xs">
+                  {device.profile === scaleProfile ? "体脂秤" : "血压计"} ·{" "}
+                  {device.model}
+                </CardDescription>
+              </div>
+            </div>
+            {code && (
+              <Badge variant="outline" className="shrink-0 font-mono">
+                {code}
+              </Badge>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3 px-5">
+          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-xs">
+            <dt className="text-muted-foreground">所属成员</dt>
+            <dd className="truncate">{members || "待绑定成员"}</dd>
+            <dt className="text-muted-foreground">采集端</dt>
+            <dd className="truncate">
+              {collector?.name || collector?.id || "未分配"}
+            </dd>
+            <dt className="text-muted-foreground">最近测量</dt>
+            <dd>
+              {device.last_measured_at
+                ? date(device.last_measured_at)
+                : "暂无测量"}
+            </dd>
+          </dl>
+          <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+            <span>蓝牙</span>
+            <SignalValue collector={collector} device={device} compact />
+          </div>
+        </CardContent>
+        <CardFooter className="flex flex-wrap items-center justify-between gap-2 px-5">
+          <Badge variant="secondary" className="font-normal">
+            {device.lifecycle_state === "active"
+              ? "已接入"
+              : device.collector_id
+                ? "接入中"
+                : "未分配"}
+          </Badge>
+          <CollapsibleTrigger asChild>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="group"
+              aria-label={`${deviceLabel(device)}的详情与操作`}
+            >
+              详情与操作
+              <ChevronDown className="size-3.5 transition-transform group-data-[state=open]:rotate-180" />
+            </Button>
+          </CollapsibleTrigger>
+        </CardFooter>
+        <CollapsibleContent className="border-t px-5 pt-4">
+          {children}
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
+  );
 }
 export function Management({
   page: tab,
@@ -144,169 +248,138 @@ export function Management({
       "指令已提交，请查看设备事件中的执行结果",
     );
   }
-  const deviceRow = (d: Row) => {
-    const assigned = bindings.filter(
-      (b) => b.device_id === d.id && !b.effective_to,
-    );
-    return (
-      <AccordionItem key={d.id} value={d.id} className="px-4 last:border-b-0">
-        <AccordionTrigger className="gap-3 py-4 hover:no-underline">
-          <div className="flex min-w-0 flex-1 items-center gap-3">
-            <div className="rounded-lg border bg-muted/50 p-2">
-              {d.profile === scaleProfile ? (
-                <Scale className="size-4" />
-              ) : (
-                <HeartPulse className="size-4" />
+  const deviceRow = (d: Row) => (
+    <MeasurementDeviceCard
+      key={d.id}
+      device={d}
+      collector={collectors.find((c) => c.id === d.collector_id)}
+      members={bindings
+        .filter((b) => b.device_id === d.id && !b.effective_to)
+        .map((b) => b.member_name)
+        .join(" / ")}
+    >
+      <div className="space-y-4 pt-2">
+        <p className="text-sm leading-6 text-muted-foreground">
+          {d.profile === scaleProfile
+            ? "唤醒体脂秤即可连接；每台秤在下方绑定一位家庭成员。"
+            : "配对前请在血压计上长按蓝牙按键进入配对模式。配对会注册此采集端；正常读取不修改设置。"}
+        </p>
+        <p className="text-sm leading-6 text-muted-foreground">
+          {d.address} ·{" "}
+          {collectors.find((c) => c.id === d.collector_id)?.name ||
+            d.collector_id}
+        </p>
+        {d.profile !== scaleProfile && (
+          <>
+            <div className="flex flex-wrap items-start gap-2">
+              <Button
+                disabled={
+                  busy ||
+                  !collectors.find((c) => c.id === d.collector_id)?.online
+                }
+                onClick={() => command(d.collector_id, "pair", d.id)}
+              >
+                配对 / 重新配对
+              </Button>
+              <Button
+                disabled={
+                  busy ||
+                  !collectors.find((c) => c.id === d.collector_id)?.online
+                }
+                onClick={() => command(d.collector_id, "read", d.id)}
+                variant="outline"
+              >
+                诊断读取
+              </Button>
+              <Button
+                disabled={
+                  busy ||
+                  !collectors.find((c) => c.id === d.collector_id)?.online
+                }
+                onClick={() => command(d.collector_id, "backfill", d.id)}
+                variant="outline"
+              >
+                补采遗漏记录
+              </Button>
+            </div>
+          </>
+        )}
+        {d.profile === scaleProfile && (
+          <>
+            {d.lifecycle_state !== "active" && d.collector_id && (
+              <Button
+                disabled={
+                  busy ||
+                  !collectors.find((c) => c.id === d.collector_id)?.online
+                }
+                onClick={() => command(d.collector_id, "pair", d.id)}
+              >
+                重试接入验证
+              </Button>
+            )}
+            <Label className="grid min-w-0 gap-2 text-sm">
+              体脂估算通道
+              <SelectField
+                value={d.adc_index}
+                disabled={busy}
+                onChange={(e) =>
+                  action(
+                    () =>
+                      api("devices/" + d.id, "PATCH", {
+                        adc_index: Number(e.target.value),
+                      }),
+                    "计算通道已保存，仅影响新测量",
+                  )
+                }
+              >
+                <option value="0">ADC 1（默认）</option>
+                <option value="1">ADC 2</option>
+              </SelectField>
+            </Label>
+            <p className="text-sm leading-6 text-muted-foreground">
+              所属成员：
+              {bindings.find((b) => b.device_id === d.id && !b.effective_to)
+                ?.member_name || "待绑定"}
+              {!collectors.find((c) => c.id === d.collector_id)?.status
+                ?.capabilities?.signals && (
+                <>
+                  {" "}
+                  ·{" "}
+                  {collectors
+                    .find((c) => c.id === d.collector_id)
+                    ?.status?.devices?.find((v: Row) => v.id === d.id)
+                    ?.connected
+                    ? "蓝牙已连接"
+                    : "等待秤唤醒"}
+                </>
               )}
-            </div>
-            <div className="min-w-0 flex-1 sm:grid sm:grid-cols-3 sm:items-center sm:gap-4">
-              <p className="truncate text-sm font-medium text-foreground">
-                {d.name}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {d.profile === scaleProfile ? "体脂秤" : "血压计"} ·{" "}
-                {assigned.map((b) => b.member_name).join(" / ") || "待绑定成员"}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {d.last_measured_at
-                  ? `最近测量 ${date(d.last_measured_at)}`
-                  : `添加于 ${date(d.created_at)}`}
-              </p>
-            </div>
-            <Badge variant="outline" className="shrink-0 text-xs">
-              {d.lifecycle_state === "active"
-                ? "已接入"
-                : d.collector_id
-                  ? "接入中"
-                  : "未分配"}
-            </Badge>
-          </div>
-        </AccordionTrigger>
-        <AccordionContent>
-          <div className="space-y-4 pt-2">
-            <p className="text-sm leading-6 text-muted-foreground">
-              {d.profile === scaleProfile
-                ? "唤醒体脂秤即可连接；每台秤在下方绑定一位家庭成员。"
-                : "配对前请在血压计上长按蓝牙按键进入配对模式。配对会注册此采集端；正常读取不修改设置。"}
             </p>
-            <p className="text-sm leading-6 text-muted-foreground">
-              {d.address} ·{" "}
-              {collectors.find((c) => c.id === d.collector_id)?.name ||
-                d.collector_id}
-            </p>
-            {d.profile !== scaleProfile && (
-              <>
-                <div className="flex flex-wrap items-start gap-2">
-                  <Button
-                    disabled={
-                      busy ||
-                      !collectors.find((c) => c.id === d.collector_id)?.online
-                    }
-                    onClick={() => command(d.collector_id, "pair", d.id)}
-                  >
-                    配对 / 重新配对
-                  </Button>
-                  <Button
-                    disabled={
-                      busy ||
-                      !collectors.find((c) => c.id === d.collector_id)?.online
-                    }
-                    onClick={() => command(d.collector_id, "read", d.id)}
-                    variant="outline"
-                  >
-                    诊断读取
-                  </Button>
-                  <Button
-                    disabled={
-                      busy ||
-                      !collectors.find((c) => c.id === d.collector_id)?.online
-                    }
-                    onClick={() => command(d.collector_id, "backfill", d.id)}
-                    variant="outline"
-                  >
-                    补采遗漏记录
-                  </Button>
-                </div>
-              </>
-            )}
-            {d.profile === scaleProfile && (
-              <>
-                {d.lifecycle_state !== "active" && d.collector_id && (
-                  <Button
-                    disabled={
-                      busy ||
-                      !collectors.find((c) => c.id === d.collector_id)?.online
-                    }
-                    onClick={() => command(d.collector_id, "pair", d.id)}
-                  >
-                    重试接入验证
-                  </Button>
-                )}
-                <Label className="grid min-w-0 gap-2 text-sm">
-                  体脂估算通道
-                  <SelectField
-                    value={d.adc_index}
-                    disabled={busy}
-                    onChange={(e) =>
-                      action(
-                        () =>
-                          api("devices/" + d.id, "PATCH", {
-                            adc_index: Number(e.target.value),
-                          }),
-                        "计算通道已保存，仅影响新测量",
-                      )
-                    }
-                  >
-                    <option value="0">ADC 1（默认）</option>
-                    <option value="1">ADC 2</option>
-                  </SelectField>
-                </Label>
-                <p className="text-sm leading-6 text-muted-foreground">
-                  所属成员：
-                  {bindings.find((b) => b.device_id === d.id && !b.effective_to)
-                    ?.member_name || "待绑定"}
-                  {!collectors.find((c) => c.id === d.collector_id)?.status
-                    ?.capabilities?.signals && (
-                    <>
-                      {" "}
-                      ·{" "}
-                      {collectors
-                        .find((c) => c.id === d.collector_id)
-                        ?.status?.devices?.find((v: Row) => v.id === d.id)
-                        ?.connected
-                        ? "蓝牙已连接"
-                        : "等待秤唤醒"}
-                    </>
-                  )}
-                </p>
-              </>
-            )}
-            <SignalValue
-              collector={collectors.find((c) => c.id === d.collector_id)}
-              device={d}
-            />
-            <DeviceActions
-              device={d}
-              collectors={collectors}
-              api={api}
-              action={action}
-              busy={busy}
-            />
-            <Button
-              variant="outline"
-              onClick={() => {
-                setBindingDevice(d.id);
-                setBindingOpen(true);
-              }}
-            >
-              <Users className="size-4" />
-              成员绑定
-            </Button>
-          </div>
-        </AccordionContent>
-      </AccordionItem>
-    );
-  };
+          </>
+        )}
+        <SignalValue
+          collector={collectors.find((c) => c.id === d.collector_id)}
+          device={d}
+        />
+        <DeviceActions
+          device={d}
+          collectors={collectors}
+          api={api}
+          action={action}
+          busy={busy}
+        />
+        <Button
+          variant="outline"
+          onClick={() => {
+            setBindingDevice(d.id);
+            setBindingOpen(true);
+          }}
+        >
+          <Users className="size-4" />
+          成员绑定
+        </Button>
+      </div>
+    </MeasurementDeviceCard>
+  );
   return (
     <div className="space-y-5">
       {resource.error && (
@@ -334,221 +407,251 @@ export function Management({
               </Button>
             </div>
           </div>
-          <Discovered rows={discovered} api={api} action={action} busy={busy} />
-          <SignalHistory collectors={collectors} devices={devices} />
-          {collectors.map((c) => (
-            <Card key={c.id} className="gap-4 p-4 shadow-none sm:p-5">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex min-w-0 items-center gap-3">
-                  <div className="rounded-lg bg-muted p-2.5">
-                    <Radio className="size-5" />
-                  </div>
-                  <div className="min-w-0">
-                    <h2 className="min-w-0 tracking-tight break-words text-base font-semibold">
-                      {c.name || c.id}
-                    </h2>
-                    <p className="text-xs text-muted-foreground">
-                      {c.location || "未设置位置"} ·{" "}
-                      {devices.filter((d) => d.collector_id === c.id).length}{" "}
-                      台设备
-                    </p>
-                  </div>
-                </div>
-                <Badge variant={c.online ? "default" : "secondary"}>
-                  {c.online ? "在线" : "离线"}
-                </Badge>
+          <div className="grid min-w-0 items-start gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
+            <section className="min-w-0 space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-semibold">测量设备</h2>
+                <Badge variant="outline">{devices.length} 台</Badge>
               </div>
-              <Disclosure>
-                <summary>采集端设置与维护</summary>
-                <code className="break-all text-xs text-muted-foreground">
-                  {c.id}
-                </code>
-                <SignalValue collector={c} />
-                <form
-                  onSubmit={(e) => {
-                    const d = form(e);
-                    action(() => api("collectors/" + c.id, "PUT", d));
-                  }}
-                  className="space-y-4"
-                >
-                  <div className="grid min-w-0 items-end gap-4 sm:grid-cols-2 [&>button]:justify-self-start">
-                    <Label className="grid min-w-0 gap-2 text-sm">
-                      名称
-                      <Input name="name" defaultValue={c.name || ""} required />
-                    </Label>
-                    <Label className="grid min-w-0 gap-2 text-sm">
-                      位置
-                      <Input
-                        name="location"
-                        defaultValue={c.location || ""}
-                        placeholder="例如 客厅"
-                      />
-                    </Label>
-                  </div>
-                  <Button disabled={busy}>保存信息</Button>
-                </form>
-                <dl className="grid grid-cols-[auto_1fr] [&>div]:contents gap-x-4 gap-y-2 text-sm">
-                  <dt className="text-muted-foreground">固件</dt>
-                  <dd className="min-w-0 break-words">
-                    {c.status?.firmware ||
-                      c.status?.firmware_version ||
-                      c.status?.version ||
-                      "—"}
-                  </dd>
-                  <dt className="text-muted-foreground">待上传</dt>
-                  <dd className="min-w-0 break-words">
-                    {c.status?.queue_depth ?? c.status?.pending_count ?? "—"}
-                  </dd>
-                  <dt className="text-muted-foreground">体脂秤容量</dt>
-                  <dd className="min-w-0 break-words">
-                    {c.status?.capabilities?.max_scales
-                      ? `${devices.filter((d) => d.collector_id === c.id && d.profile === scaleProfile).length} / ${c.status.capabilities.max_scales} 台`
-                      : "请升级固件后接入"}
-                  </dd>
-                  <dt className="text-muted-foreground">最近在线</dt>
-                  <dd className="min-w-0 break-words">{date(c.last_seen)}</dd>
-                  <dt className="text-muted-foreground">最近错误</dt>
-                  <dd className="min-w-0 break-words">
-                    {c.status?.error || c.status?.last_error || "无"}
-                  </dd>
-                </dl>
-                <div className="flex flex-wrap items-start gap-2">
-                  <Button
-                    disabled={busy || !c.online}
-                    onClick={() => command(c.id, "scan")}
-                  >
-                    扫描蓝牙设备
-                  </Button>
-                  {safeDebugURL(c.status) && (
-                    <Button asChild variant="outline">
-                      <a
-                        href={safeDebugURL(c.status)}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        本机调试 ↗
-                      </a>
-                    </Button>
-                  )}
+              {devices.length ? (
+                <div className="grid min-w-0 items-start gap-4 sm:grid-cols-2">
+                  {devices.map(deviceRow)}
                 </div>
-                <CollectorActions
-                  collector={c}
-                  api={api}
-                  action={action}
-                  busy={busy}
-                />
-              </Disclosure>
-              <Accordion type="multiple" className="rounded-lg border">
-                {devices.filter((d) => d.collector_id === c.id).map(deviceRow)}
-              </Accordion>
-              {!devices.some((d) => d.collector_id === c.id) && (
-                <p className="text-xs text-muted-foreground">
-                  还没有关联的测量设备。
-                </p>
-              )}
-            </Card>
-          ))}
-          {!collectors.length && !resource.loading && (
-            <Empty>暂无采集端。联网后可在待添加列表中绑定。</Empty>
-          )}
-          {devices.some(
-            (d) => !collectors.some((c) => c.id === d.collector_id),
-          ) && (
-            <Card className="gap-4 p-5 shadow-none">
-              <h2 className="min-w-0 break-words text-base tracking-tight font-semibold">
-                未分配设备
-              </h2>
-              <Accordion type="multiple" className="rounded-lg border">
-                {devices
-                  .filter(
-                    (d) => !collectors.some((c) => c.id === d.collector_id),
-                  )
-                  .map(deviceRow)}
-              </Accordion>
-            </Card>
-          )}
-          <Operations operations={operations} />
-          <Disclosure>
-            <summary>设备事件与扫描结果 · {events.length}</summary>
-            <Card className="gap-4 p-5 shadow-none">
-              <h2 className="min-w-0 break-words text-base font-semibold tracking-tight">
-                设备事件与扫描结果
-              </h2>
-              {!events.length ? (
-                <Empty>暂无设备事件</Empty>
               ) : (
-                events.slice(0, 50).map((e) => (
-                  <Disclosure key={e.id}>
-                    <summary>
-                      {date(e.created_at)} · {e.collector_id} ·{" "}
-                      {e.type || e.event_type} · {e.status || ""}
-                    </summary>
-                    {e.error && (
-                      <p className="text-sm leading-6 text-destructive">
-                        {e.error}
-                      </p>
-                    )}
-                    {Array.isArray(e.data?.devices) &&
-                      e.data.devices.map((found: Row) => (
-                        <div
-                          className="flex flex-wrap items-center gap-3 rounded-lg border p-3"
-                          key={found.address}
-                        >
-                          <strong>{found.name || "未知设备"}</strong>
-                          <span>
-                            {found.address} · {found.rssi} dBm
-                          </span>
-                          <Button
-                            onClick={() => {
-                              setScanAddress(found.address || "");
-                              setScanProfile(
-                                found.profile || "omron-hem-7374t1",
-                              );
-                              setScanHardware(found.hardware_id || "");
-                              setScanCollector(e.collector_id);
-                              setAdding(true);
-                              setScanAddressType(
-                                String(found.address_type ?? 0),
-                              );
-                            }}
-                            variant="outline"
+                <Empty>还没有测量设备，点击添加设备开始连接。</Empty>
+              )}
+            </section>
+            <section className="min-w-0 space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-semibold">采集端</h2>
+                <Badge variant="outline">
+                  {collectors.filter((c) => c.online).length} /{" "}
+                  {collectors.length} 在线
+                </Badge>
+              </div>{" "}
+              {collectors.map((c) => (
+                <Card key={c.id} className="gap-4 p-4 shadow-none sm:p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="rounded-lg bg-muted p-2.5">
+                        <Radio className="size-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <h2 className="min-w-0 tracking-tight break-words text-base font-semibold">
+                          {c.name || c.id}
+                        </h2>
+                        <p className="text-xs text-muted-foreground">
+                          {c.location || "未设置位置"} ·{" "}
+                          {
+                            devices.filter((d) => d.collector_id === c.id)
+                              .length
+                          }{" "}
+                          台设备
+                        </p>
+                      </div>
+                    </div>
+                    <Badge variant={c.online ? "default" : "secondary"}>
+                      {c.online ? "在线" : "离线"}
+                    </Badge>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-muted/40 px-3 py-2">
+                    <SignalValue collector={c} compact />
+                    <span className="text-xs text-muted-foreground">
+                      待上传{" "}
+                      {c.status?.queue_depth ?? c.status?.pending_count ?? 0}
+                    </span>
+                  </div>
+                  <Disclosure>
+                    <summary>采集端设置与维护</summary>
+                    <code className="break-all text-xs text-muted-foreground">
+                      {c.id}
+                    </code>
+                    <SignalValue collector={c} />
+                    <form
+                      onSubmit={(e) => {
+                        const d = form(e);
+                        action(() => api("collectors/" + c.id, "PUT", d));
+                      }}
+                      className="space-y-4"
+                    >
+                      <div className="grid min-w-0 items-end gap-4 sm:grid-cols-2 [&>button]:justify-self-start">
+                        <Label className="grid min-w-0 gap-2 text-sm">
+                          名称
+                          <Input
+                            name="name"
+                            defaultValue={c.name || ""}
+                            required
+                          />
+                        </Label>
+                        <Label className="grid min-w-0 gap-2 text-sm">
+                          位置
+                          <Input
+                            name="location"
+                            defaultValue={c.location || ""}
+                            placeholder="例如 客厅"
+                          />
+                        </Label>
+                      </div>
+                      <Button disabled={busy}>保存信息</Button>
+                    </form>
+                    <dl className="grid grid-cols-[auto_1fr] [&>div]:contents gap-x-4 gap-y-2 text-sm">
+                      <dt className="text-muted-foreground">固件</dt>
+                      <dd className="min-w-0 break-words">
+                        {c.status?.firmware ||
+                          c.status?.firmware_version ||
+                          c.status?.version ||
+                          "—"}
+                      </dd>
+                      <dt className="text-muted-foreground">待上传</dt>
+                      <dd className="min-w-0 break-words">
+                        {c.status?.queue_depth ??
+                          c.status?.pending_count ??
+                          "—"}
+                      </dd>
+                      <dt className="text-muted-foreground">体脂秤容量</dt>
+                      <dd className="min-w-0 break-words">
+                        {c.status?.capabilities?.max_scales
+                          ? `${devices.filter((d) => d.collector_id === c.id && d.profile === scaleProfile).length} / ${c.status.capabilities.max_scales} 台`
+                          : "请升级固件后接入"}
+                      </dd>
+                      <dt className="text-muted-foreground">最近在线</dt>
+                      <dd className="min-w-0 break-words">
+                        {date(c.last_seen)}
+                      </dd>
+                      <dt className="text-muted-foreground">最近错误</dt>
+                      <dd className="min-w-0 break-words">
+                        {c.status?.error || c.status?.last_error || "无"}
+                      </dd>
+                    </dl>
+                    <div className="flex flex-wrap items-start gap-2">
+                      <Button
+                        disabled={busy || !c.online}
+                        onClick={() => command(c.id, "scan")}
+                      >
+                        扫描蓝牙设备
+                      </Button>
+                      {safeDebugURL(c.status) && (
+                        <Button asChild variant="outline">
+                          <a
+                            href={safeDebugURL(c.status)}
+                            target="_blank"
+                            rel="noreferrer"
                           >
-                            选择设备
-                          </Button>
-                        </div>
-                      ))}
-                    <pre className="max-h-96 max-w-full overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted p-3 text-xs">
-                      {JSON.stringify(e.data ?? e, null, 2)}
-                    </pre>
+                            本机调试 ↗
+                          </a>
+                        </Button>
+                      )}
+                    </div>
+                    <CollectorActions
+                      collector={c}
+                      api={api}
+                      action={action}
+                      busy={busy}
+                    />
                   </Disclosure>
-                ))
+                  {!devices.some((d) => d.collector_id === c.id) && (
+                    <p className="text-xs text-muted-foreground">
+                      还没有关联的测量设备。
+                    </p>
+                  )}
+                </Card>
+              ))}
+              {!collectors.length && !resource.loading && (
+                <Empty>暂无采集端，联网后可在待添加列表中绑定。</Empty>
               )}
-            </Card>
-          </Disclosure>
-          <Disclosure>
-            <summary>上报拒绝记录 · {rejections.length}</summary>
-            <Card className="gap-4 p-5 shadow-none">
-              <h2 className="min-w-0 break-words text-base font-semibold tracking-tight">
-                上报拒绝记录
-              </h2>
-              {!rejections.length ? (
-                <p className="text-sm leading-6 text-muted-foreground">
-                  没有被拒绝的上报记录。
-                </p>
-              ) : (
-                rejections.map((r) => (
-                  <Disclosure key={r.id}>
-                    <summary>
-                      {date(r.created_at)} · {r.collector_id} · {r.reason}
-                    </summary>
-                    <pre className="max-h-96 max-w-full overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted p-3 text-xs">
-                      {r.payload}
-                    </pre>
-                  </Disclosure>
-                ))
-              )}
-            </Card>
-          </Disclosure>
+              <Discovered
+                rows={discovered}
+                api={api}
+                action={action}
+                busy={busy}
+              />
+            </section>
+          </div>
+          <SignalHistory collectors={collectors} devices={devices} />
+          <div className="grid min-w-0 items-start gap-4 xl:grid-cols-3">
+            <Operations operations={operations} />
+            <Disclosure>
+              <summary>设备事件与扫描结果 · {events.length}</summary>
+              <Card className="gap-4 p-5 shadow-none">
+                <h2 className="min-w-0 break-words text-base font-semibold tracking-tight">
+                  设备事件与扫描结果
+                </h2>
+                {!events.length ? (
+                  <Empty>暂无设备事件</Empty>
+                ) : (
+                  events.slice(0, 50).map((e) => (
+                    <Disclosure key={e.id}>
+                      <summary>
+                        {date(e.created_at)} · {e.collector_id} ·{" "}
+                        {e.type || e.event_type} · {e.status || ""}
+                      </summary>
+                      {e.error && (
+                        <p className="text-sm leading-6 text-destructive">
+                          {e.error}
+                        </p>
+                      )}
+                      {Array.isArray(e.data?.devices) &&
+                        e.data.devices.map((found: Row) => (
+                          <div
+                            className="flex flex-wrap items-center gap-3 rounded-lg border p-3"
+                            key={found.address}
+                          >
+                            <strong>{found.name || "未知设备"}</strong>
+                            <span>
+                              {found.address} · {found.rssi} dBm
+                            </span>
+                            <Button
+                              onClick={() => {
+                                setScanAddress(found.address || "");
+                                setScanProfile(
+                                  found.profile || "omron-hem-7374t1",
+                                );
+                                setScanHardware(found.hardware_id || "");
+                                setScanCollector(e.collector_id);
+                                setAdding(true);
+                                setScanAddressType(
+                                  String(found.address_type ?? 0),
+                                );
+                              }}
+                              variant="outline"
+                            >
+                              选择设备
+                            </Button>
+                          </div>
+                        ))}
+                      <pre className="max-h-96 max-w-full overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted p-3 text-xs">
+                        {JSON.stringify(e.data ?? e, null, 2)}
+                      </pre>
+                    </Disclosure>
+                  ))
+                )}
+              </Card>
+            </Disclosure>
+            <Disclosure>
+              <summary>上报拒绝记录 · {rejections.length}</summary>
+              <Card className="gap-4 p-5 shadow-none">
+                <h2 className="min-w-0 break-words text-base font-semibold tracking-tight">
+                  上报拒绝记录
+                </h2>
+                {!rejections.length ? (
+                  <p className="text-sm leading-6 text-muted-foreground">
+                    没有被拒绝的上报记录。
+                  </p>
+                ) : (
+                  rejections.map((r) => (
+                    <Disclosure key={r.id}>
+                      <summary>
+                        {date(r.created_at)} · {r.collector_id} · {r.reason}
+                      </summary>
+                      <pre className="max-h-96 max-w-full overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted p-3 text-xs">
+                        {r.payload}
+                      </pre>
+                    </Disclosure>
+                  ))
+                )}
+              </Card>
+            </Disclosure>
+          </div>
           <Dialog open={adding} onOpenChange={setAdding}>
             <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
               <DialogHeader>
@@ -563,7 +666,8 @@ export function Management({
                 </h2>
                 <p className="text-sm leading-6 text-muted-foreground">
                   先在设备附近的采集端执行扫描，从下方事件中核对 BLE
-                  地址。每台设备只分配给一个采集端。
+                  地址。每台设备只分配给一个采集端。体脂秤保存后自动分配固定编号（如
+                  S001）。
                 </p>
                 <form
                   className="grid min-w-0 items-end gap-4 sm:grid-cols-2 [&>button]:justify-self-start"
@@ -583,6 +687,9 @@ export function Management({
                           scanProfile === scaleProfile ? scanHardware : "",
                       });
                       f.reset();
+                      setScanAddress("");
+                      setScanHardware("");
+                      setAdding(false);
                     });
                   }}
                 >
@@ -714,7 +821,7 @@ export function Management({
                       <option value="">请选择</option>
                       {devices.map((d) => (
                         <option key={d.id} value={d.id}>
-                          {d.name}
+                          {deviceLabel(d)}
                         </option>
                       ))}
                     </SelectField>
@@ -746,7 +853,7 @@ export function Management({
                   </Label>
                   <Label className="grid min-w-0 gap-2 text-sm">
                     生效时间（上海时间）
-                    <Input type="datetime-local" name="effective_from" />
+                    <DateField type="datetime-local" name="effective_from" />
                     <small className="block text-xs leading-5 text-muted-foreground">
                       留空：首次认领历史，换绑从现在生效
                     </small>
@@ -778,8 +885,11 @@ export function Management({
                       {bindings.map((b) => (
                         <TableRow key={b.id}>
                           <TableCell className="align-top">
-                            {devices.find((d) => d.id === b.device_id)?.name ||
-                              b.device_id}
+                            {devices.find((d) => d.id === b.device_id)
+                              ? deviceLabel(
+                                  devices.find((d) => d.id === b.device_id)!,
+                                )
+                              : b.device_id}
                           </TableCell>
                           <TableCell className="align-top">
                             {b.user_slot === 0 ? "整台体脂秤" : b.user_slot}

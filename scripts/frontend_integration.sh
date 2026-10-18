@@ -21,4 +21,4 @@ trap 'exit 130' INT
 trap 'exit 143' HUP TERM
 PYTHONPATH=scripts python3 -c 'from lifecycle_support import verify_isolation; verify_isolation()'
 if [ "${EIR_TEST_SKIP_BUILD:-0}" = 1 ]; then docker compose up -d --no-build --wait; else docker compose up -d --build --wait; fi
-EIR_TEST_DATABASE_URL="postgres://eir:$POSTGRES_PASSWORD@127.0.0.1:$EIR_TEST_DB_PORT/eir_test_frontend?sslmode=disable" go test -race ./internal/server -run TestMeasurementViewsIntegration -count=1 -v
+EIR_TEST_DATABASE_URL="postgres://eir:$POSTGRES_PASSWORD@127.0.0.1:$EIR_TEST_DB_PORT/eir_test_frontend?sslmode=disable" go test -race ./internal/server ./internal/store -run 'Test(MeasurementViews|ScaleNumberingMigration)Integration' -count=1 -v

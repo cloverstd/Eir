@@ -1,3 +1,4 @@
+import { DateField } from "./components/DatePicker";
 import { useState } from "react";
 import type { Row } from "./api";
 import { SelectField } from "./components/forms";
@@ -20,7 +21,7 @@ export function ProfileFields({ member }: { member?: Row }) {
       </Label>
       <Label className="grid gap-2">
         出生年月
-        <Input
+        <DateField
           type="month"
           name="birth_month"
           value={month}
@@ -32,7 +33,7 @@ export function ProfileFields({ member }: { member?: Row }) {
       </Label>
       <Label className="grid gap-2">
         出生日期（可选）
-        <Input
+        <DateField
           type="date"
           name="birth_date"
           value={day}

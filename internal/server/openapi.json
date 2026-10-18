@@ -4400,6 +4400,13 @@
                 "format": "date-time",
                 "nullable": true,
                 "description": "该设备最近一次有时间的测量，未测量时为空。"
+              },
+              "scale_number": {
+                "type": "integer",
+                "format": "int64",
+                "nullable": true,
+                "readOnly": true,
+                "description": "体脂秤的固定编号，自动分配且不复用，前端显示为 S001；血压计为空。"
               }
             },
             "required": []

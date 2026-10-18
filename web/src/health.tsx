@@ -1,3 +1,4 @@
+import { DateField, DateRangePicker } from "./components/DatePicker";
 import { ConfirmAction } from "./lifecycle";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
@@ -17,7 +18,7 @@ import { SelectField } from "./components/forms";
 import { Link, useLocation } from "react-router";
 import { useQueryState, useRouteNavigation } from "./routing";
 import { routeForPath } from "./routingDomain";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { TimeSeriesChart } from "./components/TimeSeriesChart";
 import { Tabs, TabsList, TabsTrigger } from "./components/ui/tabs";
 import { ProfileFields } from "./body";
@@ -246,7 +247,23 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
     [newHistory, setNewHistory] = useState("condition"),
     [error, setError] = useState("");
   const member = members.find((m) => m.id === selected);
-  const query = healthQuery(selected, kind, page, from, to, group, source);
+  const [period, setPeriod] = useQueryState(
+    "period",
+    from || to ? "custom" : "all",
+    ["page", "stats_page"],
+  );
+  const queryNow = useMemo(() => Date.now(), [period, refresh]);
+  const query = healthQuery(
+    selected,
+    kind,
+    page,
+    from,
+    to,
+    group,
+    source,
+    period,
+    queryNow,
+  );
   useEffect(() => {
     const controller = new AbortController();
     api("health/metrics", "GET", undefined, controller.signal)
@@ -303,6 +320,8 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
             to,
             group,
             source,
+            period,
+            queryNow,
           ).replace("page_size=50", "page_size=200"),
         "GET",
         undefined,
@@ -554,7 +573,7 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
               </Label>
               <Label className="grid min-w-0 gap-2 text-sm">
                 发生／开始日期
-                <Input
+                <DateField
                   type="date"
                   name="occurred_on"
                   defaultValue={editHistory?.occurred_on?.slice(0, 10) || ""}
@@ -607,7 +626,7 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
                   </Label>
                   <Label className="grid min-w-0 gap-2 text-sm">
                     结束日期
-                    <Input
+                    <DateField
                       name="ended_on"
                       type="date"
                       defaultValue={editHistory?.details?.ended_on || ""}
@@ -837,7 +856,7 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
               )}
               <Label className="grid min-w-0 gap-2 text-sm">
                 测量时间（上海时间）
-                <Input
+                <DateField
                   name="measured_at"
                   type="datetime-local"
                   required
@@ -905,21 +924,17 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
                   <option value="device">设备采集</option>
                 </SelectField>
               </Label>
-              <Label className="grid min-w-0 gap-2 text-sm">
-                开始日期
-                <Input
-                  type="date"
-                  value={from}
-                  onChange={(e) => setFrom(e.target.value)}
-                />
-              </Label>
-              <Label className="grid min-w-0 gap-2 text-sm">
-                结束日期
-                <Input
-                  type="date"
-                  min={from}
-                  value={to}
-                  onChange={(e) => setTo(e.target.value)}
+              <Label className="grid min-w-0 gap-2 text-sm sm:col-span-2">
+                时间范围
+                <DateRangePicker
+                  period={period}
+                  from={from}
+                  to={to}
+                  onChange={(value) => {
+                    setPeriod(value.period);
+                    setFrom(value.from);
+                    setTo(value.to);
+                  }}
                 />
               </Label>
               <Label className="grid min-w-0 gap-2 text-sm">
@@ -1064,7 +1079,7 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
               </Label>
               <Label className="grid min-w-0 gap-2 text-sm">
                 检查日期
-                <Input
+                <DateField
                   name="recorded_on"
                   type="date"
                   defaultValue={editDocument?.recorded_on?.slice(0, 10) || ""}

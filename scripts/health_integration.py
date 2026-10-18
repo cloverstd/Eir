@@ -126,6 +126,9 @@ measurement=sql(f"INSERT INTO measurements(fingerprint,device_id,member_id,user_
 sql(f"INSERT INTO blood_pressure VALUES('{measurement}',120,80,70)")
 assert api(f'health/observations?member_id={id}&kind=blood_pressure')['items'][0]['source']=='device'
 print('PASS manual/device unified observations; measurements-only reset preserves clinical archives')
+backup_scale=sql("INSERT INTO devices(name,address,profile,model) VALUES('Synthetic numbered scale','02:00:00:00:00:91','afu-wl-tz-a1','AFU-WL-TZ-A1') RETURNING id").splitlines()[0]
+backup_scale_number=int(sql(f"SELECT scale_number FROM devices WHERE id='{backup_scale}'"))
+assert backup_scale_number>0
 
 with tempfile.TemporaryDirectory(prefix='eir-test-health-backup-') as tmp:
     destination=str(Path(tmp)/'snapshot');subprocess.run(['./scripts/backup.sh',destination],check=True)
@@ -134,6 +137,9 @@ with tempfile.TemporaryDirectory(prefix='eir-test-health-backup-') as tmp:
         restored=urllib.request.urlopen(BASE+'/api/v1/documents/'+d['id']+'/download').read();assert restored==content
     assert api(f'health/history?member_id={id}')['total']==5
     assert api(f'health/observations?member_id={id}&kind=weight')['total']==1
+    assert int(sql(f"SELECT scale_number FROM devices WHERE id='{backup_scale}'"))==backup_scale_number
+    next_number=int(sql("INSERT INTO devices(name,address,profile,model) VALUES('Synthetic restored sequence','02:00:00:00:00:92','afu-wl-tz-a1','AFU-WL-TZ-A1') RETURNING scale_number").splitlines()[0])
+    assert next_number>backup_scale_number,'Restored scale sequence reused an existing number'
 print('PASS database + firmware + medical-file backup and actual restoration')
 
 # Build a genuine pre-health schema in another database inside this isolated project.
@@ -157,12 +163,16 @@ def legacy_state():
     obj=json.loads(data)
     for member in obj['members']:
         member.pop('birth_month',None);member.pop('blood_type',None)
+    for device in obj['devices']:
+        # New metadata is allowed; every original registration field is compared.
+        device.pop('scale_number',None)
     return obj
 before_migration=legacy_state()
 
 url='postgres://eir:'+os.environ['POSTGRES_PASSWORD']+'@postgres:5432/eir_upgrade?sslmode=disable'
 for _ in range(2): compose('run','--rm','--no-deps','-T','-e','DATABASE_URL='+url,'eir','migrate',capture_output=True)
 assert legacy_state()==before_migration, 'Legacy records or calculation snapshots changed'
+assert compose('exec','-T','postgres','psql','-U','eir','-d','eir_upgrade','-At','-c',"SELECT bool_and(scale_number IS NULL) FROM devices WHERE profile='omron-hem-7374t1'",capture_output=True,text=True).stdout.strip()=='t'
 check=compose('exec','-T','postgres','psql','-U','eir','-d','eir_upgrade','-At','-c',f"SELECT name,sex,height_cm,birth_date,birth_month FROM members WHERE id='{legacy_id}'",capture_output=True,text=True).stdout.strip()
 assert check=='Synthetic legacy|female|165|1980-06-15|1980-06',check
 print('PASS pre-health database migration and repeated startup preserve old member fields')

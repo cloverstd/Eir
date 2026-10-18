@@ -18,7 +18,7 @@ export function routeForPath(path: string) {
   return { page: "not-found", memberId: "", section: "basic" };
 }
 const enums: Record<string, string[]> = {
-  period: ["7", "30", "90", "all", "custom"],
+  period: ["7", "30", "90", "180", "365", "all", "custom"],
   group: ["day", "week", "month"],
   source: ["manual", "device"],
   kind: [
