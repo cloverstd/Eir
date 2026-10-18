@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {applyZoom, loadSeries, metricSeries, referenceFor, zoomRange} from "../src/chartDomain.ts";
+import {applyZoom, loadSeries, familyMetricSeries, metricSeries, referenceFor, zoomRange} from "../src/chartDomain.ts";
 import {normalizeSearch} from "../src/routingDomain.ts";
 
 const now = new Date("2026-10-18T04:00:00Z");
@@ -50,4 +50,35 @@ test("zoom table/export bounds preserve the complete base series query and inclu
   assert.equal(normalizeSearch(encoded), encoded);
   assert.equal(normalizeSearch("zoom_from=oops&zoom_to=oops&page=2"), "page=2");
   assert.equal(normalizeSearch("zoom_from=2026-10-19T00%3A00%3A00Z&zoom_to=2026-10-18T00%3A00%3A00Z"), "");
+});
+
+test("household curves isolate people, share member colors, and distinguish blood pressure pairs", () => {
+  const members = [{id: "a", name: "成员甲"}, {id: "b", name: "成员乙"}];
+  const points = [
+    {id: "1", member_id: "a", kind: "blood_pressure", measured_at: "2026-10-18T01:00:00Z", systolic: 120, diastolic: 80, pulse: 70},
+    {id: "2", member_id: "b", kind: "blood_pressure", measured_at: "2026-10-18T02:00:00Z", systolic: 110, diastolic: 75, pulse: 65},
+    {id: "3", member_id: null, kind: "blood_pressure", measured_at: "2026-10-18T03:00:00Z", systolic: 999},
+    {id: "4", member_id: "deleted", kind: "blood_pressure", measured_at: "2026-10-18T03:00:00Z", systolic: 888},
+  ];
+  const bp = familyMetricSeries(points, "blood_pressure", members);
+  assert.deepEqual(bp.map(s => s.name), ["成员甲 · 收缩压", "成员甲 · 舒张压", "成员乙 · 收缩压", "成员乙 · 舒张压"]);
+  assert.deepEqual(bp.map(s => s.data.map(p => p[1])), [[120], [80], [110], [75]]);
+  assert.equal(new Set(bp.map(s => s.id)).size, 4);
+  assert.equal(bp[0].color, bp[1].color);
+  assert.notEqual(bp[0].color, bp[2].color);
+  assert.deepEqual(bp.map(s => s.lineType), ["solid", "dashed", "solid", "dashed"]);
+  const pulse = familyMetricSeries(points, "pulse", members);
+  assert.equal(pulse[1].color, bp[2].color);
+  assert.deepEqual(pulse.map(s => s.data.map(p => p[1])), [[70], [65]]);
+});
+test("household series preserve missing body-fat gaps, empty members, and duplicate-name identities", () => {
+  const members = [{id: "a", name: "同名"}, {id: "b", name: "同名"}];
+  const rows = [
+    {id: "1", member_id: "a", kind: "body_composition", measured_at: "2026-10-18T01:00:00Z", weight_valid: true, body_fat_pct: 20, body_fat_status: "estimated"},
+    {id: "2", member_id: "a", kind: "body_composition", measured_at: "2026-10-18T02:00:00Z", weight_valid: true, body_fat_pct: 0, body_fat_status: "missing_adc"},
+  ];
+  const series = familyMetricSeries(rows, "body_fat", members);
+  assert.deepEqual(series.map(s => s.name), ["同名（1）", "同名（2）"]);
+  assert.deepEqual(series[0].data.map(p => p[1]), [20, null]);
+  assert.deepEqual(series[1].data, []);
 });

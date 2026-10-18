@@ -3658,6 +3658,110 @@
           }
         }
       }
+    },
+    "/mcp": {
+      "servers": [
+        {
+          "url": "/"
+        }
+      ],
+      "post": {
+        "summary": "按成员只读 MCP（Streamable HTTP JSON-RPC）",
+        "description": "可由内网客户端或官方 Secure MCP Tunnel 调用。find_member 必填完整 name，仅精确返回 ID/姓名；其他工具必填单个 member_id。文件工具额外核对归属。无全员/设备查询或写工具。REST 全员查询不受此限制。完整协议见 docs/mcp.md。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "jsonrpc",
+                  "method"
+                ],
+                "properties": {
+                  "jsonrpc": {
+                    "type": "string",
+                    "enum": [
+                      "2.0"
+                    ]
+                  },
+                  "method": {
+                    "type": "string"
+                  },
+                  "id": {},
+                  "params": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "MCP JSON-RPC response；工具参数或归属错误以 MCP 错误结果返回"
+          },
+          "202": {
+            "description": "MCP notification accepted"
+          },
+          "400": {
+            "description": "Invalid protocol request"
+          },
+          "403": {
+            "description": "Foreign Origin rejected"
+          }
+        }
+      },
+      "x-eir-mcp": {
+        "transport": "streamable-http",
+        "stateless": true,
+        "readOnly": true,
+        "tools": {
+          "find_member": {
+            "required": [
+              "name"
+            ]
+          },
+          "get_member_profile": {
+            "required": [
+              "member_id"
+            ]
+          },
+          "list_health_history": {
+            "required": [
+              "member_id"
+            ]
+          },
+          "list_measurements": {
+            "required": [
+              "member_id"
+            ]
+          },
+          "get_health_statistics": {
+            "required": [
+              "member_id"
+            ]
+          },
+          "list_documents": {
+            "required": [
+              "member_id"
+            ]
+          },
+          "read_document_text": {
+            "required": [
+              "member_id",
+              "id"
+            ]
+          },
+          "read_document_pages": {
+            "required": [
+              "member_id",
+              "id",
+              "page"
+            ]
+          }
+        }
+      }
     }
   },
   "components": {

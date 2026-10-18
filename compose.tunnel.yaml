@@ -1,0 +1,28 @@
+# Optional OpenAI Secure MCP Tunnel. Combine with compose.yaml or compose.external.yaml.
+# No inbound ports: this sidecar reaches only Eir's local MCP endpoint.
+services:
+  chatgpt-tunnel:
+    image: ${EIR_TUNNEL_IMAGE:-ghcr.io/openai/tunnel-client:v0.0.16}
+    restart: unless-stopped
+    network_mode: service:eir
+    depends_on:
+      eir:
+        condition: service_healthy
+    # The official image entrypoint already includes `run`.
+    command: ["--control-plane.api-key=file:/run/secrets/chatgpt_tunnel_api_key"]
+    environment:
+      CONTROL_PLANE_TUNNEL_ID: ${EIR_TUNNEL_ID:?Set EIR_TUNNEL_ID in .env.tunnel}
+      MCP_SERVER_URL: http://127.0.0.1:8080/mcp
+      HEALTH_LISTEN_ADDR: 127.0.0.1:9091
+      LOG_LEVEL: info
+      LOG_FORMAT: json
+    secrets:
+      - chatgpt_tunnel_api_key
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+secrets:
+  chatgpt_tunnel_api_key:
+    file: ${EIR_TUNNEL_API_KEY_FILE:?Set EIR_TUNNEL_API_KEY_FILE to a private runtime-key file}
