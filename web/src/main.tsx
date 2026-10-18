@@ -262,9 +262,11 @@ function App() {
             <h1 className="text-2xl font-semibold tracking-tight">
               {current?.label || "页面未找到"}
             </h1>
-            <p className="text-sm text-muted-foreground">
-              {current?.description || "该地址暂时没有对应页面。"}
-            </p>
+            {page !== "overview" && (
+              <p className="text-sm text-muted-foreground">
+                {current?.description || "该地址暂时没有对应页面。"}
+              </p>
+            )}
           </div>
           {(error || members.error || devices.error) && (
             <Alert variant="destructive">
@@ -362,7 +364,9 @@ function App() {
           )}
           <footer className="flex flex-wrap justify-between gap-2 border-t pt-5 text-xs text-muted-foreground">
             <span>Eir · 家庭健康管理</span>
-            <span>所有测量时间以 Asia/Shanghai 显示</span>
+            {page !== "overview" && (
+              <span>所有测量时间以 Asia/Shanghai 显示</span>
+            )}
           </footer>
         </main>
       </SidebarInset>

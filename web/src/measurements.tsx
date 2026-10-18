@@ -6,6 +6,7 @@ import {
   HeartPulse,
   Scale,
   Droplets,
+  LoaderCircle,
   RotateCcw,
 } from "lucide-react";
 import { api, date, number } from "./api";
@@ -28,6 +29,7 @@ import {
 } from "./chartDomain";
 import type { Metric, TimeRange } from "./chartDomain";
 import { TimeSeriesChart } from "./components/TimeSeriesChart";
+import { InfoTip } from "./components/InfoTip";
 import { SelectField, CheckboxField, Empty } from "./components/forms";
 import { Button } from "./components/ui/button";
 import { DateRangePicker } from "./components/DatePicker";
@@ -135,6 +137,8 @@ function MetricPlot({
   metric,
   rows,
   member,
+  overview = false,
+  showMemberName = true,
   range,
   domain,
   onRangeChange,
@@ -142,6 +146,8 @@ function MetricPlot({
   metric: Metric;
   rows: Row[];
   member: Row;
+  overview?: boolean;
+  showMemberName?: boolean;
   range?: TimeRange;
   domain?: TimeRange;
   onRangeChange: (range: TimeRange) => void;
@@ -151,23 +157,54 @@ function MetricPlot({
     () => referenceFor(metric, member),
     [metric, member],
   );
+  const referenceHint = (
+    <>
+      {reference ? (
+        <>
+          <a
+            href={reference.url}
+            target="_blank"
+            rel="noreferrer"
+            className="underline decoration-dotted underline-offset-4"
+          >
+            {reference.label}
+            {reference.band &&
+              ` · ${number(reference.band[0])}–${number(reference.band[1])} ${units[metric]}`}
+          </a>
+          <p>依据成员当前资料 · {reference.source}</p>
+        </>
+      ) : (
+        <p>成员资料不足或不在成人参考适用范围，暂不显示参考带。</p>
+      )}
+      {metric === "body_fat" && (
+        <p>体脂由设备读数及个人资料估算，缺测保持断点。</p>
+      )}
+    </>
+  );
   return (
     <Card className="min-w-0 gap-2 py-5 shadow-none">
-      <CardHeader className="px-5">
-        <CardTitle className="text-sm font-medium">
-          {titles[metric]}趋势
-        </CardTitle>
-        <CardDescription className="text-xs">
-          {member.name} · {units[metric]} · 原始测量
-        </CardDescription>
+      <CardHeader className="flex flex-row items-center justify-between gap-2 px-5">
+        <div className="space-y-1.5">
+          <CardTitle className="text-sm font-medium">
+            {titles[metric]}趋势
+          </CardTitle>
+          {!overview && (
+            <CardDescription className="text-xs">
+              {member.name} · {units[metric]} · 原始测量
+            </CardDescription>
+          )}
+        </div>
+        {overview && (
+          <InfoTip label={`${titles[metric]}参考说明`}>{referenceHint}</InfoTip>
+        )}
       </CardHeader>
       <CardContent className="min-w-0 px-2 sm:px-4">
         {series.some((s) => s.data.some((p) => p[1] !== null)) ? (
           <TimeSeriesChart
             series={series}
             unit={units[metric]}
-            label={`${member.name}的${titles[metric]}趋势`}
-            memberName={member.name}
+            label={`${showMemberName ? `${member.name}的` : ""}${titles[metric]}趋势`}
+            memberName={showMemberName ? member.name : undefined}
             reference={reference}
             range={range}
             domain={domain}
@@ -179,32 +216,11 @@ function MetricPlot({
           </div>
         )}
       </CardContent>
-      <div className="px-5 text-xs leading-5 text-muted-foreground">
-        {reference ? (
-          <>
-            <a
-              href={reference.url}
-              target="_blank"
-              rel="noreferrer"
-              className="underline decoration-dotted underline-offset-4"
-            >
-              {reference.label}
-              {reference.band &&
-                ` · ${number(reference.band[0])}–${number(reference.band[1])} ${units[metric]}`}
-            </a>
-            <span className="mt-1 block">
-              依据成员当前资料 · {reference.source}
-            </span>
-          </>
-        ) : (
-          "成员资料不足或不在成人参考适用范围，暂不显示参考带。"
-        )}
-        {metric === "body_fat" && (
-          <span className="mt-1 block">
-            体脂由设备读数及个人资料估算，缺测保持断点。
-          </span>
-        )}
-      </div>
+      {!overview && (
+        <div className="space-y-1 px-5 text-xs leading-5 text-muted-foreground">
+          {referenceHint}
+        </div>
+      )}
     </Card>
   );
 }
@@ -327,125 +343,158 @@ export function MeasurementsPage({
     setZoomTo(new Date(value.to).toISOString());
   };
   const error = latest.error || curves.error || table.error;
+  const datePicker = (
+    <DateRangePicker
+      period={period}
+      from={from}
+      to={to}
+      className={overview ? "w-40 sm:w-64 sm:min-w-0" : undefined}
+      onChange={(value) => {
+        setPeriod(value.period);
+        setFrom(value.from);
+        setTo(value.to);
+      }}
+    />
+  );
   return (
     <div className="space-y-6">
       {overview && (
-        <Tabs
-          value={member || "all"}
-          onValueChange={(value) => {
-            setMember(value === "all" ? "" : value);
-            setUnassigned(false);
-          }}
-        >
-          <div className="max-w-full overflow-x-auto pb-1">
-            <TabsList className="h-10 w-max">
-              <TabsTrigger value="all" className="px-5">
-                全员
-              </TabsTrigger>
-              {members.map((m) => (
-                <TabsTrigger key={m.id} value={m.id} className="px-5">
-                  {m.name}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </div>
-        </Tabs>
-      )}
-      <div className="flex flex-wrap items-end gap-3">
-        {!overview && (
-          <>
-            <Label className="grid w-full gap-2 text-xs sm:w-44">
-              家庭成员
-              <SelectField
-                value={member}
-                onChange={(e) => {
-                  setMember(e.target.value);
-                  setUnassigned(false);
-                }}
-              >
-                <option value="">全部成员</option>
-                {members.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name}
-                  </option>
-                ))}
-              </SelectField>
-            </Label>
-            <Label className="grid w-full gap-2 text-xs sm:w-48">
-              {body ? "体脂秤" : "血压计"}
-              <SelectField
-                value={device}
-                onChange={(e) => setDevice(e.target.value)}
-              >
-                <option value="">{body ? "全部体脂秤" : "全部血压计"}</option>
-                {devices
-                  .filter((d) =>
-                    body
-                      ? d.profile === scaleProfile
-                      : d.profile !== scaleProfile,
-                  )
-                  .map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {deviceLabel(d)}
-                    </option>
-                  ))}
-              </SelectField>
-            </Label>
-          </>
-        )}
-        <Label className="grid w-full gap-2 text-xs sm:w-auto">
-          时间范围
-          <DateRangePicker
-            period={period}
-            from={from}
-            to={to}
-            onChange={(value) => {
-              setPeriod(value.period);
-              setFrom(value.from);
-              setTo(value.to);
-            }}
-          />
-        </Label>
-        {!overview && (
-          <Label className="flex h-9 items-center gap-2">
-            <CheckboxField
-              type="checkbox"
-              checked={unassigned}
-              onChange={(e) => {
-                setUnassigned(e.target.checked);
-                if (e.target.checked) {
-                  setMember("");
-                  setPeriod("all");
-                }
-              }}
-            />
-            待归属
-          </Label>
-        )}
-        {range && (
-          <Button
-            variant="outline"
-            onClick={() => {
-              setZoomFrom("");
-              setZoomTo("");
+        <div className="flex min-w-0 items-center justify-between gap-3">
+          <Tabs
+            className="min-w-0 flex-1"
+            value={member || "all"}
+            onValueChange={(value) => {
+              setMember(value === "all" ? "" : value);
+              setUnassigned(false);
             }}
           >
-            <RotateCcw className="size-3.5" />
-            恢复完整范围
-          </Button>
-        )}
-        <span
-          className="pb-2 text-xs text-muted-foreground sm:ml-auto"
-          aria-live="polite"
-        >
-          {curves.loading
-            ? "正在加载完整历史…"
-            : overview
-              ? "新测量自动同步"
-              : `${curves.data.length} 个测量点`}
-        </span>
-      </div>
-      {range && (
+            <div className="max-w-full overflow-x-auto">
+              <TabsList className="h-10 w-max">
+                <TabsTrigger value="all" className="px-5">
+                  全员
+                </TabsTrigger>
+                {members.map((m) => (
+                  <TabsTrigger key={m.id} value={m.id} className="px-5">
+                    {m.name}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </div>
+          </Tabs>
+          <div className="flex shrink-0 items-center gap-1">
+            {datePicker}
+            <InfoTip label="概览说明">
+              <p>
+                读数卡显示各指标最新有效设备测量及实际测量时间，不受图表时间范围影响。
+              </p>
+              <p>新测量自动同步。趋势保留原始测量点，可拖动或缩放查看。</p>
+              <p>所有测量时间以上海时间（Asia/Shanghai）显示。</p>
+              {range && (
+                <p>
+                  当前视野：{date(range.from)} — {date(range.to)}
+                </p>
+              )}
+            </InfoTip>
+            {curves.loading && (
+              <LoaderCircle
+                className="size-4 animate-spin text-muted-foreground"
+                role="status"
+                aria-label="正在加载完整历史"
+              />
+            )}
+          </div>
+        </div>
+      )}
+      {(!overview || range) && (
+        <div className="flex flex-wrap items-end gap-3">
+          {!overview && (
+            <>
+              <Label className="grid w-full gap-2 text-xs sm:w-44">
+                家庭成员
+                <SelectField
+                  value={member}
+                  onChange={(e) => {
+                    setMember(e.target.value);
+                    setUnassigned(false);
+                  }}
+                >
+                  <option value="">全部成员</option>
+                  {members.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </SelectField>
+              </Label>
+              <Label className="grid w-full gap-2 text-xs sm:w-48">
+                {body ? "体脂秤" : "血压计"}
+                <SelectField
+                  value={device}
+                  onChange={(e) => setDevice(e.target.value)}
+                >
+                  <option value="">{body ? "全部体脂秤" : "全部血压计"}</option>
+                  {devices
+                    .filter((d) =>
+                      body
+                        ? d.profile === scaleProfile
+                        : d.profile !== scaleProfile,
+                    )
+                    .map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {deviceLabel(d)}
+                      </option>
+                    ))}
+                </SelectField>
+              </Label>
+            </>
+          )}
+          {!overview && (
+            <Label className="grid w-full gap-2 text-xs sm:w-auto">
+              时间范围
+              {datePicker}
+            </Label>
+          )}
+          {!overview && (
+            <Label className="flex h-9 items-center gap-2">
+              <CheckboxField
+                type="checkbox"
+                checked={unassigned}
+                onChange={(e) => {
+                  setUnassigned(e.target.checked);
+                  if (e.target.checked) {
+                    setMember("");
+                    setPeriod("all");
+                  }
+                }}
+              />
+              待归属
+            </Label>
+          )}
+          {range && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                setZoomFrom("");
+                setZoomTo("");
+              }}
+            >
+              <RotateCcw className="size-3.5" />
+              恢复完整范围
+            </Button>
+          )}
+          {!overview && (
+            <span
+              className="pb-2 text-xs text-muted-foreground sm:ml-auto"
+              aria-live="polite"
+            >
+              {curves.loading
+                ? "正在加载完整历史…"
+                : `${curves.data.length} 个测量点`}
+            </span>
+          )}
+        </div>
+      )}
+      {range && !overview && (
         <p className="text-xs text-muted-foreground">
           当前视野：{date(range.from)} — {date(range.to)}
           {!overview && " · 测量记录及导出已联动"}
@@ -475,15 +524,21 @@ export function MeasurementsPage({
       ) : (
         displayGroups.map((m) => (
           <section key={m.id || "unassigned"} className="space-y-4">
-            <div className="flex items-center gap-3">
-              <h2 className="text-lg font-semibold tracking-tight">{m.name}</h2>
-              <Badge
-                variant="outline"
-                className="font-normal text-muted-foreground"
-              >
-                最新设备测量
-              </Badge>
-            </div>
+            {(!overview || !member) && (
+              <div className="flex items-center gap-3">
+                <h2 className="text-lg font-semibold tracking-tight">
+                  {m.name}
+                </h2>
+                {!overview && (
+                  <Badge
+                    variant="outline"
+                    className="font-normal text-muted-foreground"
+                  >
+                    最新设备测量
+                  </Badge>
+                )}
+              </div>
+            )}
             {latest.loading && !latest.data.length ? (
               <div className="grid grid-cols-2 gap-3">
                 <Skeleton className="h-32" />
@@ -505,6 +560,8 @@ export function MeasurementsPage({
                     metric={metric}
                     rows={curves.data.filter((row) => row.member_id === m.id)}
                     member={m}
+                    overview={overview}
+                    showMemberName={!overview || !member}
                     range={range}
                     domain={domain}
                     onRangeChange={changeRange}
