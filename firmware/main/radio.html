@@ -17,12 +17,13 @@
 <section class="panel wifi" aria-label="Wi-Fi 信号"><div class="row"><div><p class="eyebrow">WI-FI</p><h2 id="ssid">正在读取</h2><p class="muted" id="wifi-info"></p></div><div><div class="reading" id="wifi-rssi">—</div><p id="wifi-level" class="muted"></p></div></div><p id="wifi-stats" class="stats"></p><div id="wifi-chart" class="chart"></div></section>
 <div class="filter"><label>附近的 BLE 设备<input id="filter" type="search" placeholder="按名称、MAC 或服务 UUID 筛选" autocomplete="off"></label><label class="check"><input type="checkbox" id="only-focus">只看关注设备</label></div>
 <p class="muted" id="count" style="font-size:13px;margin-bottom:12px"></p><div id="devices" class="list"></div>
-<section class="panel guide"><h2>怎样比较摆放位置</h2><ol><li>唤醒体脂秤和血压计，让它们广播；若被手机 App 占用，先退出 App。未广播的休眠设备无法被扫描到。</li><li>按名称或 MAC 找到目标，点击「关注」。已分配设备连接后会单独显示连接信号。</li><li>每个位置测试 1–3 分钟，比较同一来源的平均值、最弱值和曲线；移动后点「换位置，重新计数」。</li></ol><p>RSSI 越接近 0 越强：≥ −60 较强，−75 至 −60 良好，−85 至 −75 偏弱，低于 −85 很弱。这些只是比较参考，不能换算准确距离；最终请在实际摆放处完成一次称重和血压采集验证。</p><p class="muted">广播与连接信号分开统计。超过 10 秒未收到新样本会标为旧读数，可能是休眠、正在连接或超出范围。随机 MAC 可能变化；设备信息仅来自广播，未广播的型号等信息无法显示。ESP32-C3 扫描 BLE，不包含经典蓝牙设备。</p></section>
+<section class="panel guide"><h2>怎样比较摆放位置</h2><ol><li>唤醒体脂秤和血压计，让它们广播；若被手机 App 占用，先退出 App。未广播的休眠设备无法被扫描到。</li><li>已添加设备默认关注；其他设备可按名称或 MAC 找到后点击「关注」。已分配设备连接后会单独显示连接信号。</li><li>每个位置测试 1–3 分钟，比较同一来源的平均值、最弱值和曲线；移动后点「换位置，重新计数」。</li></ol><p>RSSI 越接近 0 越强：≥ −60 较强，−75 至 −60 良好，−85 至 −75 偏弱，低于 −85 很弱。这些只是比较参考，不能换算准确距离；最终请在实际摆放处完成一次称重和血压采集验证。</p><p class="muted">广播与连接信号分开统计。超过 10 秒未收到新样本会标为旧读数，可能是休眠、正在连接或超出范围。随机 MAC 可能变化；设备信息仅来自广播，未广播的型号等信息无法显示。ESP32-C3 扫描 BLE，不包含经典蓝牙设备。</p></section>
 </main>
 <script>
 'use strict';
 const $ = id => document.getElementById(id);
 let latest = null, sessionKey = '', writing = false, lastSuccess = 0, chain = Promise.resolve();
+const focusOverrides = new Map();
 const focused = new Set(), cards = new Map(), history = new Map();
 function serial(fn) { const result = chain.then(fn, fn); chain = result.catch(() => {}); return result; }
 async function api(path, options = {}) {
@@ -62,7 +63,7 @@ function createCard(d) {
   const el=document.createElement('article');el.className='device';
   // All radio-provided values are inserted with textContent, never HTML.
   el.innerHTML='<div class="device-head"><div class="name"><h3></h3><div class="mac"></div><div class="tags"></div></div><button class="focus-button" type="button"></button></div><div class="metrics"></div><div class="chart" hidden></div><details><summary>设备与广播信息</summary><dl></dl></details>';
-  el.querySelector('button').onclick=()=>{const id=key(d);if(focused.has(id))focused.delete(id);else focused.add(id);renderList();};return el;
+  el.querySelector('button').onclick=()=>{const id=key(d);const value=!focused.has(id);focusOverrides.set(id,value);if(value)focused.add(id);else focused.delete(id);renderList();};return el;
 }
 function metric(title,s,active,connected=true) {
   const el=document.createElement('div');el.className='metric';const fresh=active&&s&&s.age_ms<=10000&&connected;
@@ -85,7 +86,7 @@ function renderList() {
   for(const d of visible){
     const id=key(d), el=cards.get(id)||createCard(d);cards.set(id,el);el.classList.toggle('focus',focused.has(id));
     el.querySelector('h3').textContent=d.name||(d.profile==='afu-wl-tz-a1'?'已分配体脂秤':d.profile==='omron-hem-7374t1'?'已分配血压计':'未广播名称');el.querySelector('.mac').textContent=d.address;
-    el.querySelector('.tags').textContent=`${d.configured?'已分配 · ':''}${d.connected?'当前已连接':d.hint} · ${d.address_type%2?'随机地址':'公共地址'}`;
+    el.querySelector('.tags').textContent=`${d.configured?(d.profile==='afu-wl-tz-a1'?'已分配体脂秤 · ':d.profile==='omron-hem-7374t1'?'已分配血压计 · ':'已分配 · '):''}${d.connected?'当前已连接':d.hint} · ${d.address_type%2?'随机地址':'公共地址'}`;
     const button=el.querySelector('button');button.textContent=focused.has(id)?'已关注':'关注';button.setAttribute('aria-pressed',focused.has(id));
     const metrics=[metric('广播信号',d.advertisement,latest.active)];if(d.connection||d.connected)metrics.push(metric('连接信号',d.connection,latest.active,d.connected));
     el.querySelector('.metrics').replaceChildren(...metrics);
@@ -101,6 +102,7 @@ function render(data) {
   if(newKey!==sessionKey || (latest&&data.uptime_ms<latest.uptime_ms)){history.clear();sessionKey=newKey;}
   if(latest&&latest.wifi.bssid!==data.wifi.bssid)history.delete('wifi');
   latest=data;
+  for(const d of data.devices){const id=key(d);const focus=focusOverrides.has(id)?focusOverrides.get(id):d.configured;if(focus)focused.add(id);else focused.delete(id);}
   const retained=new Set(['wifi']);for(const d of data.devices){retained.add(key(d)+'/adv');retained.add(key(d)+'/conn');}
   for(const id of history.keys())if(!retained.has(id))history.delete(id);
   if(data.active){addPoint('wifi',data.wifi.stats,data.uptime_ms);for(const d of data.devices){addPoint(key(d)+'/adv',d.advertisement,data.uptime_ms);addPoint(key(d)+'/conn',d.connection,data.uptime_ms);}}

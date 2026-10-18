@@ -41,8 +41,15 @@ fs.mkdirSync(output,{recursive:true});
     assert.equal(await page.evaluate(()=>window.radioXss),undefined);
     assert.equal(await page.locator('#devices img').count(),0);
     assert.equal(await page.locator('#devices').innerText().then(t=>t.includes('<img src=x')),true);
-    await page.locator('.device').filter({hasText:'AFU-WL-TZ-A1'}).getByRole('button',{name:'关注',exact:true}).click();
-    await page.locator('.device').filter({hasText:'OMRON'}).getByRole('button',{name:'关注',exact:true}).click();
+    assert.equal(await page.locator('.device.focus').count(),2);
+    assert((await page.locator('#devices').innerText()).includes('已分配血压计'));
+    const cuff=page.locator('.device').filter({hasText:'OMRON'});
+    await cuff.getByRole('button',{name:'已关注',exact:true}).click();
+    now+=2000;await page.evaluate(()=>refresh());
+    assert.equal(await cuff.getByRole('button',{name:'关注',exact:true}).getAttribute('aria-pressed'),'false');
+    await page.reload();
+    await page.waitForFunction(()=>document.querySelectorAll('.device.focus').length===2);
+
     for(let i=0;i<8;i++){now+=2000;await page.evaluate(()=>refresh());}
     await page.locator('#only-focus').check();assert.equal(await page.locator('.device').count(),2);
     const scale=page.locator('.device').filter({hasText:'AFU-WL-TZ-A1'});
