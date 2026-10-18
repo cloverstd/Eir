@@ -1,5 +1,6 @@
 #pragma once
 #include "eir.h"
+#include "esp_http_server.h"
 #include "signal_policy.h"
 extern signal_policy::Cache signal_cache;
 void ble_sample_signals();
@@ -25,4 +26,4 @@ bool ble_connected(const std::string &device);
 bool afu_connected(const std::string &device);
 // Explicit, short-lived local diagnostics; never included in MQTT status.
 void afu_trace_start(int seconds);
-std::string afu_trace_json();
+esp_err_t afu_trace_send(httpd_req_t *request);

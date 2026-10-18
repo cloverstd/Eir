@@ -1,5 +1,6 @@
 #include "afu_protocol.h"
 #include "durable_journal.h"
+#include "scale_trace.h"
 #include "ble_runtime.h"
 #include "radio_test.h"
 #include "esp_random.h"
@@ -17,17 +18,10 @@ namespace {
 struct SeenScale {ble_addr_t address{};std::string name,hardware;int rssi=0;int64_t when=0;};
 std::mutex scales_mutex;
 std::map<std::string,SeenScale> seen_scales;
-struct Notice {uint16_t connection,handle,length;uint8_t bytes[64];};
-struct Trace {Notice notice{};uint32_t sequence=0,milliseconds=0;uint16_t expected_handle=0;};
-std::mutex trace_mutex;
-std::array<Trace,48> trace_entries{};
-uint32_t trace_sequence=0;
-int64_t trace_until=0;
+using Notice = scale_trace::Notice;
+scale_trace::Buffer trace_buffer;
 void trace_notice(const Notice&notice,uint16_t expected){
-  std::lock_guard<std::mutex> lock(trace_mutex);
-  if(esp_timer_get_time()>=trace_until)return;
-  uint32_t sequence=++trace_sequence;
-  trace_entries[(sequence-1)%trace_entries.size()]={notice,sequence,uint32_t(esp_timer_get_time()/1000),expected};
+  trace_buffer.record(notice, expected, esp_timer_get_time()/1000);
 }
 struct ScaleConnection {
   std::atomic<uint16_t> conn{BLE_HS_CONN_HANDLE_NONE};
@@ -240,31 +234,17 @@ void worker(void*arg){
 } // namespace
 
 void afu_trace_start(int seconds){
-  std::lock_guard<std::mutex> lock(trace_mutex);
-  trace_entries={};trace_sequence=0;
-  trace_until=seconds>0?esp_timer_get_time()+int64_t(std::min(seconds,180))*1000000:0;
+  trace_buffer.start(seconds, esp_timer_get_time()/1000);
 }
-std::string afu_trace_json(){
-  std::vector<Trace> copy;uint32_t count;bool active;
-  {std::lock_guard<std::mutex> lock(trace_mutex);copy.assign(trace_entries.begin(),trace_entries.end());count=trace_sequence;active=esp_timer_get_time()<trace_until;}
-  // A cJSON tree for every sample used excessive heap during queue writes.
-  // Every field is numeric/boolean or locally encoded hexadecimal, so emit
-  // the bounded trace directly without allocating hundreds of JSON nodes.
-  std::string out="{\"active\":"+std::string(active?"true":"false")+",\"received\":"+std::to_string(count)+",\"entries\":[";
-  out.reserve(copy.size()*256+96);
-  bool first=true;
-  for(uint32_t seq=count>copy.size()?count-copy.size()+1:1;seq<=count;++seq){
-    const auto &t=copy[(seq-1)%copy.size()];
-    if(!first)out+=",";
-    first=false;
-    out+="{\"sequence\":"+std::to_string(seq)+",\"uptime_ms\":"+std::to_string(t.milliseconds);
-    out+=",\"connection\":"+std::to_string(t.notice.connection)+",\"handle\":"+std::to_string(t.notice.handle)+",\"expected_handle\":"+std::to_string(t.expected_handle);
-    std::vector<uint8_t> raw(t.notice.bytes,t.notice.bytes+t.notice.length);afu::Packet p;bool parsed=afu::parse(raw,p);
-    out+=",\"raw_hex\":\""+hex(raw)+"\",\"parsed\":"+(parsed?"true":"false");
-    if(parsed)out+=",\"opcode\":"+std::to_string(p.opcode)+",\"grams\":"+std::to_string(p.grams)+",\"stable\":"+(p.stable?"true":"false");
-    out+="}";
-  }
-  return out+"]}";
+esp_err_t afu_trace_send(httpd_req_t *request){
+  httpd_resp_set_type(request, "application/json");
+  esp_err_t result = ESP_OK;
+  bool sent = scale_trace::write_json(trace_buffer, esp_timer_get_time()/1000, [&](const char *data, size_t size) {
+    result = httpd_resp_send_chunk(request, data, size);
+    return result == ESP_OK;
+  });
+  if (!sent) return result == ESP_OK ? ESP_FAIL : result;
+  return httpd_resp_send_chunk(request, nullptr, 0);
 }
 
 void afu_discover(const ble_gap_disc_desc &disc){

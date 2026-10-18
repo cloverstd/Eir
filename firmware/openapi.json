@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Eir ESP32 local placement diagnostics",
-    "version": "0.3.13",
+    "version": "0.3.14",
     "description": "Device-local HTTP only. No new Eir API or MQTT messages. Responses use Cache-Control: no-store. All diagnostic data is RAM-only; no authentication beyond the existing local-device access boundary and same-origin POST guard."
   },
   "servers": [
@@ -106,6 +106,104 @@
           },
           "409": {
             "description": "Cannot start during maintenance; stop remains allowed"
+          }
+        }
+      }
+    },
+    "/status": {
+      "get": {
+        "summary": "Read collector status and memory headroom",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "largest_free_block": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "description": "Largest currently allocatable contiguous 8-bit heap block in bytes"
+                    },
+                    "task_stack_min_free": {
+                      "type": "object",
+                      "properties": {
+                        "main": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "http": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "description": "Minimum remaining task stack in bytes since boot; HTTP is present after its first request"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/scale-diagnostics": {
+      "get": {
+        "summary": "Read the bounded scale notification trace",
+        "description": "Disabled by default. Streams rows without allocating a full response or holding the recorder lock during network I/O. Rows overwritten while reading are skipped. Raw measurements stay on the collector and are never published as telemetry.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScaleTrace"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Start an expiring trace or clear it with zero seconds",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "seconds"
+                ],
+                "properties": {
+                  "seconds": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 180
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScaleTrace"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "seconds outside 0..180"
+          },
+          "403": {
+            "description": "Rejected cross-origin POST"
           }
         }
       }
@@ -352,6 +450,78 @@
           "wifi",
           "devices"
         ]
+      },
+      "ScaleTrace": {
+        "type": "object",
+        "required": [
+          "active",
+          "received",
+          "entries"
+        ],
+        "properties": {
+          "active": {
+            "type": "boolean"
+          },
+          "received": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "entries": {
+            "type": "array",
+            "maxItems": 48,
+            "items": {
+              "type": "object",
+              "required": [
+                "sequence",
+                "uptime_ms",
+                "connection",
+                "handle",
+                "expected_handle",
+                "raw_hex",
+                "parsed"
+              ],
+              "properties": {
+                "sequence": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "uptime_ms": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "connection": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "handle": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "expected_handle": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "raw_hex": {
+                  "type": "string",
+                  "maxLength": 128,
+                  "pattern": "^[0-9a-f]*$"
+                },
+                "parsed": {
+                  "type": "boolean"
+                },
+                "opcode": {
+                  "type": "integer"
+                },
+                "grams": {
+                  "type": "integer"
+                },
+                "stable": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        }
       }
     }
   }

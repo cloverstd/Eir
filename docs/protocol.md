@@ -36,6 +36,8 @@ OTA额外字段：`url,sha256,size,version,chip:"esp32c3",partition_layout:"eir-
 
 `status`: `{online,collector_id,firmware,ip,rssi,free_heap,uptime,queue_depth,error,last_command}`。last_command携带最近一次持久化命令事件，服务器通过心跳恢复丢失结果。遗嘱只发送`{online:false}`，服务器合并状态，保留最后版本和IP。90秒无新心跳视为离线。
 
+固件 0.3.14 增加可选诊断字段 `largest_free_block`（当前最大可分配连续堆块，字节）和 `task_stack_min_free:{main,http?}`（本次启动后各任务的历史最小剩余栈，字节；HTTP 首次处理请求后才出现）。这些只是资源余量，不代表称重采集或入库确认。
+
 ## 信号遥测（固件 0.3.9 起）
 
 `status` 增加每次启动随机的 32 位十六进制 `boot_id` 和 `capabilities.signals:true`。旧 `rssi` 字段仍表示 Wi-Fi dBm；接入点读取失败时为 `null`。心跳继续每 10 秒发送。

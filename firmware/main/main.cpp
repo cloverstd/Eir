@@ -7,6 +7,7 @@
 #include "esp_event.h"
 #include "esp_http_client.h"
 #include "esp_http_server.h"
+#include "esp_heap_caps.h"
 #include "esp_image_format.h"
 #include "esp_log.h"
 #include "esp_mac.h"
@@ -59,6 +60,8 @@ static bool matches(cJSON *j) {
 static nvs_handle_t nv;
 static esp_mqtt_client_handle_t mqtt;
 static std::atomic<bool> wifi_ok{false}, mqtt_ok{false};
+static TaskHandle_t main_task = nullptr;
+static std::atomic<TaskHandle_t> http_task{nullptr};
 static std::string signal_boot_id;
 static uint64_t signal_sequence=0;
 static std::string startup_ota_command, startup_reset_proof = "{}", last_measurement = "null";
@@ -282,6 +285,11 @@ static std::string status() {
   else cJSON_AddNullToObject(j,"rssi");
   cJSON_AddNumberToObject(j, "free_heap", esp_get_free_heap_size());
   cJSON_AddNumberToObject(j,"min_free_heap",esp_get_minimum_free_heap_size());
+  cJSON_AddNumberToObject(j,"largest_free_block",heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+  auto stacks = cJSON_AddObjectToObject(j,"task_stack_min_free");
+  if (main_task) cJSON_AddNumberToObject(stacks,"main",uxTaskGetStackHighWaterMark(main_task));
+  auto serving_task = http_task.load();
+  if (serving_task) cJSON_AddNumberToObject(stacks,"http",uxTaskGetStackHighWaterMark(serving_task));
   cJSON_AddBoolToObject(j,"ble_scanning",ble_gap_disc_active());
   cJSON_AddNumberToObject(j, "uptime", esp_timer_get_time() / 1000000);
   {
@@ -790,6 +798,7 @@ static void reboot_task(void *) {
   esp_restart();
 }
 static esp_err_t http(httpd_req_t *r) {
+  http_task = xTaskGetCurrentTaskHandle();
   std::string uri = r->uri;
   if (r->method == HTTP_POST) {
     char origin[160]{}, host[128]{};
@@ -850,8 +859,7 @@ static esp_err_t http(httpd_req_t *r) {
       if(seconds<0||seconds>180)return httpd_resp_send_err(r,HTTPD_400_BAD_REQUEST,"seconds must be 0..180");
       afu_trace_start(seconds);
     }
-    auto out=afu_trace_json();httpd_resp_set_type(r,"application/json");
-    return httpd_resp_send(r,out.c_str(),out.size());
+    return afu_trace_send(r);
   }
   if (uri == "/backup") {
     FILE *f = fopen("/data/registration.json", "rb");
@@ -997,7 +1005,39 @@ static void serial_config(void *) {
       line.clear();
   }
 }
+// Keep the queue read/migration buffer off app_main's permanent stack frame:
+// the same task also samples HCI RSSI and publishes status and diagnostics.
+static __attribute__((noinline)) std::string load_queued_message(const std::string &name) {
+  FILE *f = fopen(("/data/" + name).c_str(), "rb");
+  if (!f) return "";
+  char b[1024];
+  size_t n = fread(b, 1, sizeof(b) - 1, f);
+  fclose(f);
+  b[n] = 0;
+  // Durably scope adopted legacy queue IDs. A power cut may leave both
+  // filenames, but both normalize to the same id and are idempotent.
+  auto queued = cJSON_Parse(b);
+  if (lifecycle_bound() && str(queued,"binding_id").empty()) {
+    cJSON_DeleteItemFromObject(queued,"version");cJSON_AddNumberToObject(queued,"version",2);stamp(queued);
+    std::string key = str(queued,"binding_id")+":"+str(queued,"data_epoch")+":"+str(queued,"device_id")+":"+std::to_string(num(queued,"user_slot"))+":"+str(queued,"raw_hex");
+    uint8_t digest[32];size_t length=0;
+    if (psa_hash_compute(PSA_ALG_SHA_256,(const uint8_t*)key.data(),key.size(),digest,sizeof(digest),&length)!=PSA_SUCCESS) {cJSON_Delete(queued);return "";}
+    auto normalized=hex(digest,16);cJSON_DeleteItemFromObject(queued,"message_id");cJSON_AddStringToObject(queued,"message_id",normalized.c_str());
+    auto encoded=js(queued);cJSON_Delete(queued);
+    FILE *out=fopen("/data/adopt.tmp","wb");if(!out)return "";
+    bool durable=fwrite(encoded.data(),1,encoded.size(),out)==encoded.size()&&fflush(out)==0&&fsync(fileno(out))==0;fclose(out);
+    if (durable && rename("/data/adopt.tmp",("/data/q-"+normalized+".json").c_str())==0) {
+      remove_file("/data/"+name);
+      return encoded;
+    }
+    return "";
+  }
+  cJSON_Delete(queued);
+  return std::string(b, n);
+}
+
 extern "C" void app_main() {
+  main_task = xTaskGetCurrentTaskHandle();
   uint8_t signal_random[16];esp_fill_random(signal_random,sizeof(signal_random));signal_boot_id=hex(signal_random,sizeof(signal_random));
   ESP_ERROR_CHECK(nvs_flash_init());
   if (psa_crypto_init() != PSA_SUCCESS)
@@ -1151,35 +1191,7 @@ extern "C" void app_main() {
         std::lock_guard<std::mutex> l(queue_mutex);
         files = queue_files();
       }
-      queue_upload::send(queue_mutex, files, [](const std::string &name) -> std::string {
-        FILE *f = fopen(("/data/" + name).c_str(), "rb");
-        if (!f)
-          return "";
-        char b[1024];
-        size_t n = fread(b, 1, sizeof(b) - 1, f);
-        fclose(f);
-        b[n] = 0;
-        // Durably scope adopted legacy queue IDs. A power cut may leave both
-        // filenames, but both normalize to the same id and are idempotent.
-        auto queued=cJSON_Parse(b);
-        if(lifecycle_bound() && str(queued,"binding_id").empty()) {
-          cJSON_DeleteItemFromObject(queued,"version");cJSON_AddNumberToObject(queued,"version",2);stamp(queued);
-          std::string key=str(queued,"binding_id")+":"+str(queued,"data_epoch")+":"+str(queued,"device_id")+":"+std::to_string(num(queued,"user_slot"))+":"+str(queued,"raw_hex");
-          uint8_t digest[32];size_t length=0;
-          if(psa_hash_compute(PSA_ALG_SHA_256,(const uint8_t*)key.data(),key.size(),digest,sizeof(digest),&length)!=PSA_SUCCESS){cJSON_Delete(queued);return "";}
-          auto normalized=hex(digest,16);cJSON_DeleteItemFromObject(queued,"message_id");cJSON_AddStringToObject(queued,"message_id",normalized.c_str());
-          auto encoded=js(queued);cJSON_Delete(queued);
-          FILE *out=fopen("/data/adopt.tmp","wb");if(!out)return "";
-          bool durable=fwrite(encoded.data(),1,encoded.size(),out)==encoded.size()&&fflush(out)==0&&fsync(fileno(out))==0;fclose(out);
-          if(durable && rename("/data/adopt.tmp",("/data/q-"+normalized+".json").c_str())==0) {
-            remove_file("/data/"+name);
-            return encoded;
-          }
-          return "";
-        }
-        cJSON_Delete(queued);
-        return std::string(b, n);
-      }, [](const std::string &payload) {
+      queue_upload::send(queue_mutex, files, load_queued_message, [](const std::string &payload) {
         return esp_mqtt_client_publish(mqtt, topic("measurements").c_str(),
                                        payload.c_str(), payload.size(), 1, 0) >= 0;
       });
