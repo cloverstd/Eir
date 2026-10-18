@@ -2,7 +2,6 @@ import { useEffect, useRef } from "react";
 import * as echarts from "echarts/core";
 import { LineChart } from "echarts/charts";
 import {
-  DataZoomComponent,
   GridComponent,
   LegendComponent,
   MarkAreaComponent,
@@ -17,7 +16,6 @@ echarts.use([
   GridComponent,
   LegendComponent,
   TooltipComponent,
-  DataZoomComponent,
   MarkAreaComponent,
   MarkLineComponent,
   CanvasRenderer,
@@ -44,7 +42,6 @@ type Props = {
   reference?: Reference;
   range?: TimeRange;
   domain?: TimeRange;
-  onRangeChange?: (range: TimeRange) => void;
 };
 
 export function TimeSeriesChart({
@@ -55,40 +52,16 @@ export function TimeSeriesChart({
   reference,
   range,
   domain,
-  onRangeChange,
 }: Props) {
   const ref = useRef<HTMLDivElement>(null),
     chartRef = useRef<echarts.ECharts | null>(null);
-  const callback = useRef(onRangeChange);
-  callback.current = onRangeChange;
-  const extent = useRef<TimeRange | undefined>(domain);
   useEffect(() => {
     if (!ref.current) return;
     const chart = echarts.init(ref.current);
     chartRef.current = chart;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    chart.on("datazoom", () => {
-      clearTimeout(timer);
-      timer = setTimeout(() => {
-        if (!extent.current || !callback.current) return;
-        const zoom = (chart.getOption().dataZoom as any[])?.[0];
-        const { from, to } = extent.current;
-        const start = Number(
-          zoom?.startValue ??
-            from + ((to - from) * Number(zoom?.start ?? 0)) / 100,
-        );
-        const end = Number(
-          zoom?.endValue ??
-            from + ((to - from) * Number(zoom?.end ?? 100)) / 100,
-        );
-        if (Number.isFinite(start) && Number.isFinite(end) && end > start)
-          callback.current({ from: Math.round(start), to: Math.round(end) });
-      }, 220);
-    });
     const observer = new ResizeObserver(() => chart.resize());
     observer.observe(ref.current);
     return () => {
-      clearTimeout(timer);
       observer.disconnect();
       chart.dispose();
       chartRef.current = null;
@@ -106,24 +79,11 @@ export function TimeSeriesChart({
       : Date.now();
     const referenceValues =
       reference?.band || reference?.lines?.map((line) => line.value) || [];
-    const bounds = domain || {
-      from: first,
-      to: last === first ? last + 60000 : last,
-    };
-    extent.current = bounds;
-    const previousZoom = (
-      chart.getOption()?.dataZoom as any[] | undefined
-    )?.[0];
-    const zoom = range
-      ? { startValue: range.from, endValue: range.to }
-      : !onRangeChange &&
-          previousZoom &&
-          (previousZoom.start > 0 || previousZoom.end < 100)
-        ? {
-            startValue: previousZoom.startValue,
-            endValue: previousZoom.endValue,
-          }
-        : { start: 0, end: 100 };
+    const bounds = range ||
+      domain || {
+        from: first,
+        to: last === first ? last + 60000 : last,
+      };
     chart.setOption(
       {
         animation: false,
@@ -132,7 +92,7 @@ export function TimeSeriesChart({
           fontFamily: 'system-ui, "PingFang SC", sans-serif',
           fontSize: 11,
         },
-        grid: { left: 54, right: 24, top: 24, bottom: 100 },
+        grid: { left: 54, right: 24, top: 24, bottom: 60 },
         legend: {
           bottom: 0,
           itemWidth: 14,
@@ -200,32 +160,13 @@ export function TimeSeriesChart({
                 Math.ceil(Math.max(value.max, ...referenceValues) + 1)
             : undefined,
         },
-        dataZoom: [
-          {
-            id: "slider",
-            type: "slider",
-            bottom: 32,
-            height: 22,
-            realtime: false,
-            showDetail: false,
-            borderColor: "#e5e5e5",
-            fillerColor: "rgba(115,115,115,.12)",
-            ...zoom,
-          },
-          {
-            id: "inside",
-            type: "inside",
-            zoomOnMouseWheel: "ctrl",
-            moveOnMouseWheel: false,
-            preventDefaultMouseMove: false,
-            ...zoom,
-          },
-        ],
         series: series.map((s, index) => ({
           id: s.id,
           name: s.name,
           type: "line",
-          data: s.data,
+          data: range
+            ? s.data.filter(([time]) => time >= range.from && time <= range.to)
+            : s.data,
           showSymbol: s.data.length < 80,
           symbolSize: 6,
           connectNulls: false,
@@ -266,7 +207,7 @@ export function TimeSeriesChart({
             : {}),
         })),
       },
-      { replaceMerge: ["series", "dataZoom"], silent: true },
+      { replaceMerge: ["series"], silent: true },
     );
   }, [
     series,

@@ -14,6 +14,7 @@ import type { Row } from "./api";
 import { useResource } from "./realtime";
 import { useQueryState } from "./routing";
 import { measurementCorrection, measurementQuery } from "./domain";
+import { shanghaiDay } from "./dateDomain";
 import {
   bodyFatStatus,
   bodyFatValue,
@@ -141,7 +142,6 @@ function MetricPlot({
   showMemberName = true,
   range,
   domain,
-  onRangeChange,
 }: {
   metric: Metric;
   rows: Row[];
@@ -150,7 +150,6 @@ function MetricPlot({
   showMemberName?: boolean;
   range?: TimeRange;
   domain?: TimeRange;
-  onRangeChange: (range: TimeRange) => void;
 }) {
   const series = useMemo(() => metricSeries(rows, metric), [rows, metric]);
   const reference = useMemo(
@@ -208,7 +207,6 @@ function MetricPlot({
             reference={reference}
             range={range}
             domain={domain}
-            onRangeChange={onRangeChange}
           />
         ) : (
           <div className="p-3">
@@ -255,7 +253,7 @@ export function MeasurementsPage({
     [zoomTo, setZoomTo] = useQueryState("zoom_to", "", ["page"]);
   const range = zoomRange(zoomFrom, zoomTo);
   const [editing, setEditing] = useState<Row | null>(null);
-  // The rolling boundary is stable while paging/zooming, and advances on data refresh.
+  // The rolling boundary is stable while paging, and advances on data refresh.
   const now = useMemo(() => Date.now(), [period, revision]);
   const scope = {
     member,
@@ -338,16 +336,12 @@ export function MeasurementsPage({
   const domain = Number.isFinite(min)
     ? { from: min, to: max > min ? max : min + 60000 }
     : undefined;
-  const changeRange = (value: TimeRange) => {
-    setZoomFrom(new Date(value.from).toISOString());
-    setZoomTo(new Date(value.to).toISOString());
-  };
   const error = latest.error || curves.error || table.error;
   const datePicker = (
     <DateRangePicker
-      period={period}
-      from={from}
-      to={to}
+      period={range ? "custom" : period}
+      from={range ? shanghaiDay(range.from) : from}
+      to={range ? shanghaiDay(range.to) : to}
       className={overview ? "w-40 sm:w-64 sm:min-w-0" : undefined}
       onChange={(value) => {
         setPeriod(value.period);
@@ -387,7 +381,9 @@ export function MeasurementsPage({
               <p>
                 读数卡显示各指标最新有效设备测量及实际测量时间，不受图表时间范围影响。
               </p>
-              <p>新测量自动同步。趋势保留原始测量点，可拖动或缩放查看。</p>
+              <p>
+                新测量自动同步。趋势保留原始测量点，通过时间选择器切换查看范围。
+              </p>
               <p>所有测量时间以上海时间（Asia/Shanghai）显示。</p>
               {range && (
                 <p>
@@ -564,7 +560,6 @@ export function MeasurementsPage({
                     showMemberName={!overview || !member}
                     range={range}
                     domain={domain}
-                    onRangeChange={changeRange}
                   />
                 ),
               )}
