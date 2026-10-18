@@ -24,6 +24,7 @@
 #include "nvs_flash.h"
 #include "protocol.h"
 #include "lifecycle_policy.h"
+#include "queue_upload.h"
 #include "psa/crypto.h"
 #include <cstdio>
 #include <cerrno>
@@ -1121,15 +1122,15 @@ extern "C" void app_main() {
         startup_ota_command.clear();
       }
       if(!lifecycle_bound())continue;
-      std::lock_guard<std::mutex> l(queue_mutex);
-      auto files = queue_files();
-      int sent = 0;
-      for (auto &name : files) {
-        if (sent++ >= 8)
-          break;
+      std::vector<std::string> files;
+      {
+        std::lock_guard<std::mutex> l(queue_mutex);
+        files = queue_files();
+      }
+      queue_upload::send(queue_mutex, files, [](const std::string &name) -> std::string {
         FILE *f = fopen(("/data/" + name).c_str(), "rb");
         if (!f)
-          continue;
+          return "";
         char b[1024];
         size_t n = fread(b, 1, sizeof(b) - 1, f);
         fclose(f);
@@ -1141,21 +1142,23 @@ extern "C" void app_main() {
           cJSON_DeleteItemFromObject(queued,"version");cJSON_AddNumberToObject(queued,"version",2);stamp(queued);
           std::string key=str(queued,"binding_id")+":"+str(queued,"data_epoch")+":"+str(queued,"device_id")+":"+std::to_string(num(queued,"user_slot"))+":"+str(queued,"raw_hex");
           uint8_t digest[32];size_t length=0;
-          if(psa_hash_compute(PSA_ALG_SHA_256,(const uint8_t*)key.data(),key.size(),digest,sizeof(digest),&length)!=PSA_SUCCESS){cJSON_Delete(queued);continue;}
+          if(psa_hash_compute(PSA_ALG_SHA_256,(const uint8_t*)key.data(),key.size(),digest,sizeof(digest),&length)!=PSA_SUCCESS){cJSON_Delete(queued);return "";}
           auto normalized=hex(digest,16);cJSON_DeleteItemFromObject(queued,"message_id");cJSON_AddStringToObject(queued,"message_id",normalized.c_str());
           auto encoded=js(queued);cJSON_Delete(queued);
-          FILE *out=fopen("/data/adopt.tmp","wb");if(!out)continue;
+          FILE *out=fopen("/data/adopt.tmp","wb");if(!out)return "";
           bool durable=fwrite(encoded.data(),1,encoded.size(),out)==encoded.size()&&fflush(out)==0&&fsync(fileno(out))==0;fclose(out);
           if(durable && rename("/data/adopt.tmp",("/data/q-"+normalized+".json").c_str())==0) {
             remove_file("/data/"+name);
-            esp_mqtt_client_publish(mqtt,topic("measurements").c_str(),encoded.c_str(),0,1,0);
+            return encoded;
           }
-          continue;
+          return "";
         }
         cJSON_Delete(queued);
-        esp_mqtt_client_publish(mqtt, topic("measurements").c_str(), b, n, 1,
-                                0);
-      }
+        return std::string(b, n);
+      }, [](const std::string &payload) {
+        return esp_mqtt_client_publish(mqtt, topic("measurements").c_str(),
+                                       payload.c_str(), payload.size(), 1, 0) >= 0;
+      });
     }
   }
 }
