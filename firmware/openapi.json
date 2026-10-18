@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Eir ESP32 local placement diagnostics",
-    "version": "0.3.11",
+    "version": "0.3.12",
     "description": "Device-local HTTP only. No new Eir API or MQTT messages. Responses use Cache-Control: no-store. All diagnostic data is RAM-only; no authentication beyond the existing local-device access boundary and same-origin POST guard."
   },
   "servers": [

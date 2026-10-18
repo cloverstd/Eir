@@ -50,6 +50,7 @@ template <class F> bool fields(const Payload &payload, F visit) {
 }
 struct Entry {
   bool used = false;
+  bool protected_target = false;
   Address address;
   uint8_t event_type = 0xff;
   int64_t first_seen = 0, last_seen = 0;
@@ -64,17 +65,18 @@ class Cache {
   bool accepting(int64_t now) const {
     return session.active && now >= session.started && now < session.until;
   }
-  Entry &find(const Address &address, int64_t now) {
-    for (auto &entry : entries) if (entry.used && entry.address == address) return entry;
+  Entry *find(const Address &address, int64_t now) {
+    for (auto &entry : entries) if (entry.used && entry.address == address) return &entry;
     Entry *target = nullptr;
     for (auto &entry : entries) if (!entry.used) { target = &entry; break; }
     if (!target) {
-      target = &*std::min_element(entries.begin(), entries.end(),
-          [](const Entry &a, const Entry &b) { return a.last_seen < b.last_seen; });
+      for (auto &entry : entries)
+        if (!entry.protected_target && (!target || entry.last_seen < target->last_seen)) target = &entry;
+      if (!target) return nullptr;
       ++session.evictions;
     }
     *target = Entry{}; target->used = true; target->address = address; target->first_seen = now;
-    return *target;
+    return target;
   }
 public:
   // A stop preserves the last run. Starting again discards only diagnostics.
@@ -91,12 +93,22 @@ public:
     std::lock_guard<std::mutex> lock(mutex);
     auto result = session; result.active = accepting(now); return result;
   }
+  void protect(const Address &address, int64_t now) {
+    std::lock_guard<std::mutex> lock(mutex);
+    if (!accepting(now)) return;
+    if (auto entry = find(address, now)) {
+      entry->protected_target = true;
+      if (!entry->last_seen) entry->last_seen = now;
+    }
+  }
   void advertisement(const Address &address, int rssi, int64_t now,
                      uint8_t event_type, bool response, const uint8_t *data, size_t length) {
     if (!valid_rssi(rssi) || (length && !data)) return;
     std::lock_guard<std::mutex> lock(mutex);
     if (!accepting(now)) return;
-    auto &entry = find(address, now);
+    auto found = find(address, now);
+    if (!found) return;
+    auto &entry = *found;
     if (now < entry.last_seen) return;
     entry.last_seen = now;
     if (response) entry.response.set(data, length);
@@ -107,7 +119,10 @@ public:
     if (!valid_rssi(rssi)) return;
     std::lock_guard<std::mutex> lock(mutex);
     if (!accepting(now)) return;
-    auto &entry = find(address, now);
+    auto found = find(address, now);
+    if (!found) return;
+    auto &entry = *found;
+    entry.protected_target = true;
     if (now < entry.last_seen) return;
     entry.last_seen = now; entry.connection.add(rssi, now);
   }

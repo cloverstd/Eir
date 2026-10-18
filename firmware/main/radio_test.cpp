@@ -15,6 +15,15 @@ int64_t millis() { return esp_timer_get_time() / 1000; }
 radio_test::Address address(const ble_addr_t &value) {
   radio_test::Address result; memcpy(result.bytes, value.val, 6); result.type = value.type; return result;
 }
+bool device_address(const Device &device, radio_test::Address &addr) {
+  unsigned b[6];
+  if (sscanf(device.address.c_str(), "%x:%x:%x:%x:%x:%x", &b[5], &b[4], &b[3], &b[2], &b[1], &b[0]) != 6) return false;
+  for (size_t i = 0; i < 6; ++i) {
+    if (b[i] > 255) return false;
+    addr.bytes[i] = b[i];
+  }
+  addr.type = device.address_type; return true;
+}
 std::string mac(const radio_test::Address &value) {
   char out[18]; const auto &b = value.bytes;
   snprintf(out, sizeof(out), "%02X:%02X:%02X:%02X:%02X:%02X", b[5], b[4], b[3], b[2], b[1], b[0]);
@@ -91,9 +100,16 @@ void details(cJSON *j, const radio_test::Entry &entry) {
 
 bool local_radio_active() { return cache.state(millis()).active; }
 void local_radio_start(int seconds) {
+  auto assigned = seconds ? devices() : std::vector<Device>{};
   std::lock_guard<std::mutex> lock(wifi_mutex);
   cache.start(seconds, millis());
-  if (seconds) { wifi_stats = {}; memset(wifi_bssid, 0, sizeof(wifi_bssid)); }
+  if (seconds) {
+    wifi_stats = {}; memset(wifi_bssid, 0, sizeof(wifi_bssid));
+    for (const auto &device : assigned) {
+      radio_test::Address addr;
+      if (device_address(device, addr)) cache.protect(addr, millis());
+    }
+  }
 }
 void local_radio_discover(const ble_gap_disc_desc &disc) {
   ble_addr_t advertiser = disc.addr;
@@ -104,10 +120,8 @@ void local_radio_discover(const ble_gap_disc_desc &disc) {
       disc.event_type == BLE_HCI_ADV_RPT_EVTYPE_SCAN_RSP, disc.data, disc.length_data);
 }
 void local_radio_connection(const Device &device, int rssi, int64_t when) {
-  radio_test::Address addr; unsigned b[6];
-  if (sscanf(device.address.c_str(), "%x:%x:%x:%x:%x:%x", &b[5], &b[4], &b[3], &b[2], &b[1], &b[0]) != 6) return;
-  for (size_t i = 0; i < 6; ++i) addr.bytes[i] = b[i];
-  addr.type = device.address_type; cache.connected(addr, rssi, when);
+  radio_test::Address addr;
+  if (device_address(device, addr)) cache.connected(addr, rssi, when);
 }
 void local_radio_tick() {
   const auto session = cache.state(millis());

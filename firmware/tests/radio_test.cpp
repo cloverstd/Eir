@@ -47,6 +47,26 @@ int main() {
     assert(cache.copy(i, second, entry)); assert(entry.address.bytes[0] >= 4);
   }
   assert(cache.start(0, 71000)); assert(cache.state(72000).until == 71000);
+  // Crowded airspace must not evict an assigned scale sampled every 2 seconds
+  // between hundreds of unrelated advertisements. Preserve sleeping targets too.
+  Cache crowded; crowded.start(300, 1);
+  auto crowded_id = crowded.state(1).id;
+  crowded.protect(addr(250), 1); crowded.protect(addr(251), 1);
+  for (int round = 0; round < 20; ++round) {
+    crowded.connected(addr(250), -80, 2 + round * 2000);
+    for (int i = 0; i < 200; ++i)
+      crowded.advertisement(addr(i), -60, 3 + round * 2000 + i, 0, false, adv, sizeof(adv));
+    assert(crowded.copy(0, crowded_id, entry));
+    assert(entry.address == addr(250) && entry.connection.count == uint32_t(round + 1));
+    assert(crowded.copy(1, crowded_id, entry));
+    assert(entry.address == addr(251) && !entry.broadcast.count && !entry.connection.count);
+  }
+  assert(crowded.state(50000).evictions > 1000);
+  Cache full; full.start(300, 1);
+  for (size_t i = 0; i < capacity; ++i) full.protect(addr(i), 1);
+  full.advertisement(addr(250), -60, 2, 0, false, adv, sizeof(adv));
+  assert(full.state(2).evictions == 0);
+  assert(full.copy(0, full.state(2).id, entry) && entry.address == addr(0));
   Payload payload; int visited = 0;
   payload.set(adv, sizeof(adv));
   assert(fields(payload, [&](uint8_t, const uint8_t *, size_t length) { assert(length == 2); ++visited; }));
