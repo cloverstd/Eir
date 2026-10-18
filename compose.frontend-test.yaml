@@ -1,0 +1,10 @@
+# Use only with compose.yaml, compose.test.yaml and an eir-test-* project.
+services:
+  postgres:
+    environment:
+      POSTGRES_DB: eir_test_frontend
+    ports:
+      - "127.0.0.1:${EIR_TEST_DB_PORT:-18547}:5432"
+  eir:
+    environment:
+      DATABASE_URL: postgres://eir:${POSTGRES_PASSWORD}@postgres:5432/eir_test_frontend?sslmode=disable

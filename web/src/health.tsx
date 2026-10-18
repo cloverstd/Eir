@@ -1,8 +1,25 @@
-import {Link,useLocation} from "react-router";
-import {useQueryState,useRouteNavigation} from "./routing";
-import {routeForPath} from "./routingDomain";
-import { useEffect, useRef, useState } from "react";
-import * as echarts from "echarts/core";
+import { ConfirmAction } from "./lifecycle";
+import { Button } from "./components/ui/button";
+import { Input } from "./components/ui/input";
+import { Textarea } from "./components/ui/textarea";
+import { Label } from "./components/ui/label";
+import { Card } from "./components/ui/card";
+import { Badge } from "./components/ui/badge";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "./components/ui/table";
+import { SelectField } from "./components/forms";
+import { Link, useLocation } from "react-router";
+import { useQueryState, useRouteNavigation } from "./routing";
+import { routeForPath } from "./routingDomain";
+import { useEffect, useState } from "react";
+import { TimeSeriesChart } from "./components/TimeSeriesChart";
+import { Tabs, TabsList, TabsTrigger } from "./components/ui/tabs";
 import { ProfileFields } from "./body";
 import { memberProfile } from "./bodyDomain";
 import {
@@ -16,7 +33,12 @@ type Row = Record<string, any>;
 type Props = {
   members: Row[];
   refresh: number;
-  api: (path: string, method?: string, body?: unknown) => Promise<any>;
+  api: (
+    path: string,
+    method?: string,
+    body?: unknown,
+    signal?: AbortSignal,
+  ) => Promise<any>;
   action: (fn: () => Promise<unknown>, message?: string) => Promise<void>;
   busy: boolean;
 };
@@ -44,24 +66,24 @@ function Pages({
   setPage: (n: number) => void;
 }) {
   return (
-    <div className="pagination">
-      <button
-        className="secondary"
+    <div className="flex flex-wrap items-center justify-end gap-3 py-2 text-xs text-muted-foreground">
+      <Button
         disabled={page === 1}
         onClick={() => setPage(page - 1)}
+        variant="outline"
       >
         上一页
-      </button>
+      </Button>
       <span>
         第 {page} 页 · 共 {total} 条
       </span>
-      <button
-        className="secondary"
+      <Button
         disabled={page * 50 >= total}
         onClick={() => setPage(page + 1)}
+        variant="outline"
       >
         下一页
-      </button>
+      </Button>
     </div>
   );
 }
@@ -76,107 +98,90 @@ function BasicForm({
 }) {
   return (
     <form
-      className="form-grid"
+      className="grid min-w-0 items-end gap-4 sm:grid-cols-2 [&>button]:justify-self-start"
       onSubmit={(e) => onSave(memberProfile(fields(e)))}
     >
-      <label>
+      <Label className="grid min-w-0 gap-2 text-sm">
         姓名
-        <input
+        <Input
           name="name"
           required
           maxLength={100}
           defaultValue={member?.name || ""}
         />
-      </label>
+      </Label>
       <ProfileFields key={member?.id || "new"} member={member} />
-      <label>
+      <Label className="grid min-w-0 gap-2 text-sm">
         血型
-        <select name="blood_type" defaultValue={member?.blood_type || ""}>
+        <SelectField name="blood_type" defaultValue={member?.blood_type || ""}>
           <option value="">暂不填写</option>
           {["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].map((v) => (
             <option key={v}>{v}</option>
           ))}
-        </select>
-      </label>
-      <label className="wide-field">
+        </SelectField>
+      </Label>
+      <Label className="grid min-w-0 gap-2 text-sm sm:col-span-2">
         备注
-        <textarea
+        <Textarea
           name="notes"
           rows={3}
           maxLength={4000}
           defaultValue={member?.notes || ""}
         />
-      </label>
-      <button disabled={busy}>保存成员资料</button>
+      </Label>
+      <Button disabled={busy}>保存成员资料</Button>
     </form>
   );
 }
 function MetricChart({ rows }: { rows: Row[] }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!ref.current) return;
-    const chart = echarts.init(ref.current);
-    const times = [...new Set(rows.map((r) => r.time))].sort();
-    const groups = [
-      ...new Set(
-        rows.map((r) => `${r.kind}|${r.estimated}|${r.age_approximate}`),
+  const times = [...new Set(rows.map((r) => r.time))].sort();
+  const groups = [
+    ...new Set(
+      rows.map((r) => `${r.kind}|${r.estimated}|${r.age_approximate}`),
+    ),
+  ];
+  const series = groups.flatMap((key) => {
+    const values = rows.filter(
+        (r) => `${r.kind}|${r.estimated}|${r.age_approximate}` === key,
       ),
-    ];
-    const series = groups.flatMap((key) => {
-      const values = rows.filter(
-          (r) => `${r.kind}|${r.estimated}|${r.age_approximate}` === key,
-        ),
-        first = values[0];
-      const name =
-        (metricNames[first.kind] || first.kind) +
-        (first.estimated ? "（估算）" : "") +
-        (first.age_approximate ? " · 年龄近似" : "");
-      const lines = [
-        {
-          name,
-          type: "line",
-          connectNulls: false,
-          data: times.map(
-            (t) => values.find((v) => v.time === t)?.mean ?? null,
-          ),
-        },
-      ];
-      if (first.kind === "blood_pressure")
-        lines.push({
-          name: "舒张压",
-          type: "line",
-          connectNulls: false,
-          data: times.map(
-            (t) => values.find((v) => v.time === t)?.mean_secondary ?? null,
-          ),
-        });
-      return lines;
-    });
-    chart.setOption({
-      color: ["#0c6657", "#cd925b", "#67a994"],
-      tooltip: { trigger: "axis" },
-      legend: { bottom: 0 },
-      grid: { left: 50, right: 20, top: 20, bottom: 70 },
-      xAxis: {
-        type: "category",
-        data: times.map((t) =>
-          new Date(t).toLocaleDateString("zh-CN", {
-            timeZone: "Asia/Shanghai",
-          }),
+      first = values[0];
+    const name =
+      (metricNames[first.kind] || first.kind) +
+      (first.estimated ? "（估算）" : "") +
+      (first.age_approximate ? " · 年龄近似" : "");
+    const result = [
+      {
+        id: key,
+        name,
+        data: times.map(
+          (t) =>
+            [Date.parse(t), values.find((v) => v.time === t)?.mean ?? null] as [
+              number,
+              number | null,
+            ],
         ),
       },
-      yAxis: { type: "value", scale: true, name: rows[0]?.unit || "" },
-      series,
-    });
-    const observer = new ResizeObserver(() => chart.resize());
-    observer.observe(ref.current);
-    return () => {
-      observer.disconnect();
-      chart.dispose();
-    };
-  }, [rows]);
+    ];
+    if (first.kind === "blood_pressure")
+      result.push({
+        id: key + ":diastolic",
+        name: "舒张压",
+        data: times.map(
+          (t) =>
+            [
+              Date.parse(t),
+              values.find((v) => v.time === t)?.mean_secondary ?? null,
+            ] as [number, number | null],
+        ),
+      });
+    return result;
+  });
   return (
-    <div ref={ref} className="chart" role="img" aria-label="身体指标历史趋势" />
+    <TimeSeriesChart
+      series={series}
+      unit={rows[0]?.unit || ""}
+      label="身体指标历史趋势"
+    />
   );
 }
 export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
@@ -185,9 +190,9 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
   const [historyOptions, setHistoryOptions] = useState<Row[]>([]),
     [historySearch, setHistorySearch] = useState(""),
     [linkedHistory, setLinkedHistory] = useState("");
-  const {memberId:selected,section}=routeForPath(useLocation().pathname);
-  const navigation=useRouteNavigation();
-  const [creating,setCreating]=useState(false);
+  const { memberId: selected, section } = routeForPath(useLocation().pathname);
+  const navigation = useRouteNavigation();
+  const [creating, setCreating] = useState(false);
   const [history, setHistory] = useState<Row[]>([]),
     [documents, setDocuments] = useState<Row[]>([]),
     [rows, setRows] = useState<Row[]>([]),
@@ -201,12 +206,36 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
     [page, setPage] = useQueryState("page", 1),
     [historyPage, setHistoryPage] = useQueryState("history_page", 1),
     [documentPage, setDocumentPage] = useQueryState("document_page", 1);
-  const [kind, setKind] = useQueryState("kind", "weight", ["page","stats_page","history_page"]),
-    [historyKind, setHistoryKind] = useQueryState("history_kind", "", ["page","stats_page","history_page"]),
-    [source, setSource] = useQueryState("source", "", ["page","stats_page","history_page"]),
-    [from, setFrom] = useQueryState("from", "", ["page","stats_page","history_page"]),
-    [to, setTo] = useQueryState("to", "", ["page","stats_page","history_page"]),
-    [group, setGroup] = useQueryState("group", "day", ["page","stats_page","history_page"]);
+  const [kind, setKind] = useQueryState("kind", "weight", [
+      "page",
+      "stats_page",
+      "history_page",
+    ]),
+    [historyKind, setHistoryKind] = useQueryState("history_kind", "", [
+      "page",
+      "stats_page",
+      "history_page",
+    ]),
+    [source, setSource] = useQueryState("source", "", [
+      "page",
+      "stats_page",
+      "history_page",
+    ]),
+    [from, setFrom] = useQueryState("from", "", [
+      "page",
+      "stats_page",
+      "history_page",
+    ]),
+    [to, setTo] = useQueryState("to", "", [
+      "page",
+      "stats_page",
+      "history_page",
+    ]),
+    [group, setGroup] = useQueryState("group", "day", [
+      "page",
+      "stats_page",
+      "history_page",
+    ]);
   const [editHistory, setEditHistory] = useState<Row | null>(null),
     [editMetric, setEditMetric] = useState<Row | null>(null),
     [editDocument, setEditDocument] = useState<Row | null>(null),
@@ -219,33 +248,51 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
   const member = members.find((m) => m.id === selected);
   const query = healthQuery(selected, kind, page, from, to, group, source);
   useEffect(() => {
-    api("health/metrics")
-      .then(setMetrics)
-      .catch((e) => setError(e.message));
+    const controller = new AbortController();
+    api("health/metrics", "GET", undefined, controller.signal)
+      .then((rows) => {
+        if (!controller.signal.aborted) setMetrics(rows);
+      })
+      .catch((e) => {
+        if (!controller.signal.aborted) setError(e.message);
+      });
+    return () => controller.abort();
   }, [api]);
   useEffect(() => {
     if (!selected) return;
     let active = true;
+    const controller = new AbortController();
     api(
       `health/history?member_id=${selected}&page_size=200&search=${encodeURIComponent(historySearch)}`,
+      "GET",
+      undefined,
+      controller.signal,
     )
       .then((v) => active && setHistoryOptions(v.items))
       .catch((e) => active && setError(e.message));
     return () => {
       active = false;
+      controller.abort();
     };
   }, [selected, refresh, historySearch, api]);
   useEffect(() => {
     if (!selected) return;
     let active = true;
+    const controller = new AbortController();
     Promise.all([
       api(
         `health/history?member_id=${selected}&page=${historyPage}&page_size=50${historyKind ? `&kind=${historyKind}` : ""}`,
+        "GET",
+        undefined,
+        controller.signal,
       ),
       api(
         `health/documents?member_id=${selected}&page=${documentPage}&page_size=50`,
+        "GET",
+        undefined,
+        controller.signal,
       ),
-      api("health/observations?" + query),
+      api("health/observations?" + query, "GET", undefined, controller.signal),
       api(
         "health/statistics?" +
           healthQuery(
@@ -257,6 +304,9 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
             group,
             source,
           ).replace("page_size=50", "page_size=200"),
+        "GET",
+        undefined,
+        controller.signal,
       ),
     ])
       .then(([h, d, o, s]) => {
@@ -275,6 +325,7 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
       .catch((e) => active && setError(e.message));
     return () => {
       active = false;
+      controller.abort();
     };
   }, [
     selected,
@@ -294,19 +345,31 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
     setEditDocument(null);
     setCreating(false);
   };
-  if (selected && !member) return <section className="panel"><h2>成员未找到</h2><Link to="/members">返回成员列表</Link></section>;
+  if (selected && !member)
+    return (
+      <Card className="gap-4 p-5 shadow-none">
+        <h2 className="min-w-0 break-words text-base font-semibold tracking-tight">
+          成员未找到
+        </h2>
+        <Link to="/members">返回成员列表</Link>
+      </Card>
+    );
   if (!member)
     return (
       <>
-        <div className="section-title">
-          <h2>家人的健康档案</h2>
-          <button onClick={() => setCreating(!creating)}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="min-w-0 break-words text-base font-semibold tracking-tight">
+            家人的健康档案
+          </h2>
+          <Button onClick={() => setCreating(!creating)}>
             {creating ? "收起" : "添加成员"}
-          </button>
+          </Button>
         </div>
         {creating && (
-          <section className="panel">
-            <h2>添加家庭成员</h2>
+          <Card className="gap-4 p-5 shadow-none">
+            <h2 className="min-w-0 break-words text-base font-semibold tracking-tight">
+              添加家庭成员
+            </h2>
             <BasicForm
               busy={busy}
               onSave={(values) =>
@@ -316,21 +379,31 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
                 }, "成员已添加")
               }
             />
-          </section>
+          </Card>
         )}
-        <div className="cards">
+        <div className="grid min-w-0 gap-4 xl:grid-cols-2">
           {members.map((m) => (
-            <section className="panel" key={m.id}>
-              <h2>{m.name}</h2>
-              <p>
+            <Card className="gap-4 p-5 shadow-none" key={m.id}>
+              <h2 className="min-w-0 break-words text-base font-semibold tracking-tight">
+                {m.name}
+              </h2>
+              <p className="text-sm leading-6 text-muted-foreground">
                 {memberAge(m)} · {m.blood_type || "血型未填写"}
               </p>
-              <p>{m.height_cm ? `${m.height_cm} cm` : "身高未填写"}</p>
-              <Link className="button secondary" to={`/members/${m.id}/basic`}>查看健康档案</Link>
-            </section>
+              <p className="text-sm leading-6 text-muted-foreground">
+                {m.height_cm ? `${m.height_cm} cm` : "身高未填写"}
+              </p>
+              <Button asChild variant="outline">
+                <Link to={`/members/${m.id}/basic`}>查看健康档案</Link>
+              </Button>
+            </Card>
           ))}
         </div>
-        {!members.length && <p>先添加家人，再补充健康资料与测量记录。</p>}
+        {!members.length && (
+          <p className="text-sm leading-6 text-muted-foreground">
+            先添加家人，再补充健康资料与测量记录。
+          </p>
+        )}
       </>
     );
   const metric = metrics.find(
@@ -356,65 +429,69 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
   };
   return (
     <>
-      <div className="section-title">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2>{member.name}的健康档案</h2>
-          <p>{memberAge(member)}</p>
+          <h2 className="min-w-0 break-words text-base font-semibold tracking-tight">
+            {member.name}的健康档案
+          </h2>
+          <p className="text-sm leading-6 text-muted-foreground">
+            {memberAge(member)}
+          </p>
         </div>
-        <Link className="button secondary" to="/members">返回成员列表</Link>
+        <Button asChild variant="outline">
+          <Link to="/members">返回成员列表</Link>
+        </Button>
       </div>
-      <div className="profile-tabs" role="tablist" aria-label="健康档案分类">
-        {[
-          ["basic", "基本资料"],
-          ["history", "健康经历"],
-          ["metrics", "身体指标"],
-          ["documents", "医疗文件"],
-        ].map(([id, label]) => (
-          <Link
-            to={`/members/${selected}/${id}`}
-            role="tab"
-            aria-selected={section === id}
-            className={section === id ? "" : "secondary"}
-            key={id}
-          >
-            {label}
-          </Link>
-        ))}
-      </div>
+      <Tabs
+        value={section}
+        onValueChange={(value) =>
+          navigation.go(`/members/${selected}/${value}`)
+        }
+      >
+        <div className="max-w-full overflow-x-auto">
+          <TabsList className="w-max">
+            {[
+              ["basic", "基本资料"],
+              ["history", "健康经历"],
+              ["metrics", "身体指标"],
+              ["documents", "医疗文件"],
+            ].map(([id, label]) => (
+              <TabsTrigger key={id} value={id}>
+                {label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </div>
+      </Tabs>
       {error && (
-        <p className="alert" role="alert">
+        <p className="text-sm leading-6 text-destructive" role="alert">
           {error}
         </p>
       )}
       {section === "basic" && (
-        <section className="panel">
-          <h2>基本资料</h2>
-          <p>
+        <Card className="gap-4 p-5 shadow-none">
+          <h2 className="min-w-0 break-words text-base font-semibold tracking-tight">
+            基本资料
+          </h2>
+          <p className="text-sm leading-6 text-muted-foreground">
             出生年月可单独填写；完整日期用于更精确的年龄计算。修改资料不自动改变历史体脂计算快照。
           </p>
           <BasicForm
-            key={JSON.stringify([
-              member.id,
-              member.birth_date,
-              member.birth_month,
-              member.height_cm,
-              member.blood_type,
-              member.sex,
-              member.notes,
-              member.name,
-            ])}
+            key={member.id}
             member={member}
             busy={busy}
             onSave={(v) => action(() => api(`members/${selected}`, "PUT", v))}
           />
-        </section>
+        </Card>
       )}
       {section === "history" && (
         <>
-          <section className="panel">
-            <h2>{editHistory ? "编辑健康经历" : "补充健康经历"}</h2>
+          <Card className="gap-4 p-5 shadow-none">
+            <h2 className="min-w-0 break-words text-base font-semibold tracking-tight">
+              {editHistory ? "编辑健康经历" : "补充健康经历"}
+            </h2>
             <form
-              className="form-grid"
+              className="grid min-w-0 items-end gap-4 sm:grid-cols-2 [&>button]:justify-self-start"
               key={editHistory?.id || `new-${historyFormKey}`}
               onSubmit={(e) => {
                 const v = fields(e);
@@ -448,9 +525,9 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
                 }, "健康经历已保存");
               }}
             >
-              <label>
+              <Label className="grid min-w-0 gap-2 text-sm">
                 类型
-                <select
+                <SelectField
                   name="kind"
                   value={editHistory?.kind || newHistory}
                   onChange={(e) => {
@@ -464,117 +541,119 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
                       {v}
                     </option>
                   ))}
-                </select>
-              </label>
-              <label>
+                </SelectField>
+              </Label>
+              <Label className="grid min-w-0 gap-2 text-sm">
                 名称
-                <input
+                <Input
                   name="title"
                   required
                   maxLength={200}
                   defaultValue={editHistory?.title || ""}
                 />
-              </label>
-              <label>
+              </Label>
+              <Label className="grid min-w-0 gap-2 text-sm">
                 发生／开始日期
-                <input
+                <Input
                   type="date"
                   name="occurred_on"
                   defaultValue={editHistory?.occurred_on?.slice(0, 10) || ""}
                 />
-              </label>
-              <label>
+              </Label>
+              <Label className="grid min-w-0 gap-2 text-sm">
                 状态
-                <select
+                <SelectField
                   name="status"
                   defaultValue={editHistory?.status || "unknown"}
                 >
                   <option value="unknown">未注明</option>
                   <option value="active">目前仍有</option>
                   <option value="resolved">已结束</option>
-                </select>
-              </label>
+                </SelectField>
+              </Label>
               {(editHistory?.kind || newHistory) === "allergy" && (
                 <>
-                  <label>
+                  <Label className="grid min-w-0 gap-2 text-sm">
                     反应
-                    <input
+                    <Input
                       name="reaction"
                       defaultValue={editHistory?.details?.reaction || ""}
                     />
-                  </label>
-                  <label>
+                  </Label>
+                  <Label className="grid min-w-0 gap-2 text-sm">
                     严重程度（自述）
-                    <input
+                    <Input
                       name="severity"
                       defaultValue={editHistory?.details?.severity || ""}
                     />
-                  </label>
+                  </Label>
                 </>
               )}
               {(editHistory?.kind || newHistory) === "medication" && (
                 <>
-                  <label>
+                  <Label className="grid min-w-0 gap-2 text-sm">
                     剂量（按原处方记录）
-                    <input
+                    <Input
                       name="dose"
                       defaultValue={editHistory?.details?.dose || ""}
                     />
-                  </label>
-                  <label>
+                  </Label>
+                  <Label className="grid min-w-0 gap-2 text-sm">
                     频次
-                    <input
+                    <Input
                       name="frequency"
                       defaultValue={editHistory?.details?.frequency || ""}
                     />
-                  </label>
-                  <label>
+                  </Label>
+                  <Label className="grid min-w-0 gap-2 text-sm">
                     结束日期
-                    <input
+                    <Input
                       name="ended_on"
                       type="date"
                       defaultValue={editHistory?.details?.ended_on || ""}
                     />
-                  </label>
+                  </Label>
                 </>
               )}
               {(editHistory?.kind || newHistory) === "family" && (
-                <label>
+                <Label className="grid min-w-0 gap-2 text-sm">
                   亲属关系
-                  <input
+                  <Input
                     name="relative"
                     defaultValue={editHistory?.details?.relative || ""}
                   />
-                </label>
+                </Label>
               )}
-              <label className="wide-field">
+              <Label className="grid min-w-0 gap-2 text-sm sm:col-span-2">
                 说明
-                <textarea
+                <Textarea
                   name="notes"
                   maxLength={4000}
                   defaultValue={editHistory?.notes || ""}
                 />
-              </label>
-              <div className="actions">
-                <button disabled={busy}>保存健康经历</button>
+              </Label>
+              <div className="flex flex-wrap items-start gap-2">
+                <Button disabled={busy}>保存健康经历</Button>
                 {editHistory && (
-                  <button
+                  <Button
                     type="button"
-                    className="secondary"
                     onClick={() => setEditHistory(null)}
+                    variant="outline"
                   >
                     取消编辑
-                  </button>
+                  </Button>
                 )}
               </div>
             </form>
-          </section>
-          <section className="panel">
-            <div className="section-title">
-              <h2>健康经历</h2>
-              <label>
+          </Card>
+          <Card className="gap-4 p-5 shadow-none">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="min-w-0 break-words text-base font-semibold tracking-tight">
+                健康经历
+              </h2>
+              <Label className="grid min-w-0 gap-2 text-sm">
                 筛选类型
-                <select
+                <SelectField
                   value={historyKind}
                   onChange={(e) => {
                     setHistoryKind(e.target.value);
@@ -587,16 +666,19 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
                       {v}
                     </option>
                   ))}
-                </select>
-              </label>
+                </SelectField>
+              </Label>
             </div>
             {history.map((h) => (
-              <article className="health-entry" key={h.id}>
-                <div className="section-title">
-                  <h3>{h.title}</h3>
-                  <span className="badge">{historyNames[h.kind]}</span>
+              <article
+                className="space-y-3 border-b py-5 last:border-0"
+                key={h.id}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h3 className="text-sm font-semibold">{h.title}</h3>
+                  <Badge className="text-xs">{historyNames[h.kind]}</Badge>
                 </div>
-                <p>
+                <p className="text-sm leading-6 text-muted-foreground">
                   {h.occurred_on?.slice(0, 10) || "时间未注明"} ·{" "}
                   {
                     (
@@ -608,11 +690,13 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
                     )[h.status]
                   }
                 </p>
-                <p>{h.notes}</p>
-                <dl>
+                <p className="text-sm leading-6 text-muted-foreground">
+                  {h.notes}
+                </p>
+                <dl className="grid grid-cols-[auto_1fr] [&>div]:contents gap-x-4 gap-y-2 text-sm">
                   {Object.entries(h.details || {}).map(([k, v]) => (
                     <div key={k}>
-                      <dt>
+                      <dt className="text-muted-foreground">
                         {
                           (
                             {
@@ -626,60 +710,63 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
                           )[k]
                         }
                       </dt>
-                      <dd>{String(v)}</dd>
+                      <dd className="min-w-0 break-words">{String(v)}</dd>
                     </div>
                   ))}
                 </dl>
-                <div className="actions">
-                  <button
-                    className="secondary"
+                <div className="flex flex-wrap items-start gap-2">
+                  <Button
                     onClick={() => {
                       setEditHistory(h);
                       setNewHistory(h.kind);
                     }}
+                    variant="outline"
                   >
                     编辑经历
-                  </button>
-                  <button
-                    className="secondary"
+                  </Button>
+                  <Button
                     onClick={() => {
                       navigation.go(`/members/${selected}/documents`);
                       setEditDocument(null);
                       setLinkedHistory(h.id);
                     }}
+                    variant="outline"
                   >
                     管理关联文件
-                  </button>
-                  <button
-                    className="secondary"
-                    disabled={busy}
-                    onClick={() => {
-                      if (confirm(`删除“${h.title}”？关联文件会保留。`))
-                        action(() =>
-                          api(`members/${selected}/history/${h.id}`, "DELETE"),
-                        );
-                    }}
-                  >
-                    删除经历
-                  </button>
+                  </Button>
+                  <ConfirmAction
+                    label="删除经历"
+                    description={`删除“${h.title}”？关联文件会保留。`}
+                    busy={busy}
+                    action={action}
+                    run={() =>
+                      api(`members/${selected}/history/${h.id}`, "DELETE")
+                    }
+                  />
                 </div>
               </article>
             ))}
-            {!history.length && <p>尚未记录。未填写不代表没有相关病史。</p>}
+            {!history.length && (
+              <p className="text-sm leading-6 text-muted-foreground">
+                尚未记录。未填写不代表没有相关病史。
+              </p>
+            )}
             <Pages
               page={historyPage}
               total={historyTotal}
               setPage={setHistoryPage}
             />
-          </section>
+          </Card>
         </>
       )}
       {section === "metrics" && (
         <>
-          <section className="panel">
-            <h2>{editMetric ? "编辑手动指标" : "记录身体指标"}</h2>
+          <Card className="gap-4 p-5 shadow-none">
+            <h2 className="min-w-0 break-words text-base font-semibold tracking-tight">
+              {editMetric ? "编辑手动指标" : "记录身体指标"}
+            </h2>
             <form
-              className="form-grid"
+              className="grid min-w-0 items-end gap-4 sm:grid-cols-2 [&>button]:justify-self-start"
               key={editMetric?.id || `new-${metricFormKey}`}
               onSubmit={(e) => {
                 const v = fields(e);
@@ -704,9 +791,9 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
                 }, "指标已保存");
               }}
             >
-              <label>
+              <Label className="grid min-w-0 gap-2 text-sm">
                 指标
-                <select
+                <SelectField
                   name="kind"
                   value={editMetric?.kind || newMetric}
                   onChange={(e) => {
@@ -720,12 +807,12 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
                       {metricNames[m.kind]}（{m.unit}）
                     </option>
                   ))}
-                </select>
-              </label>
-              <label>
+                </SelectField>
+              </Label>
+              <Label className="grid min-w-0 gap-2 text-sm">
                 {metric?.kind === "blood_pressure" ? "收缩压" : "数值"}（
                 {metric?.unit}）
-                <input
+                <Input
                   name="value"
                   type="number"
                   step="any"
@@ -734,11 +821,11 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
                   required
                   defaultValue={editMetric?.value ?? ""}
                 />
-              </label>
+              </Label>
               {metric?.kind === "blood_pressure" && (
-                <label>
+                <Label className="grid min-w-0 gap-2 text-sm">
                   舒张压（mmHg）
-                  <input
+                  <Input
                     name="value_secondary"
                     type="number"
                     min={10}
@@ -746,11 +833,11 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
                     required
                     defaultValue={editMetric?.value_secondary ?? ""}
                   />
-                </label>
+                </Label>
               )}
-              <label>
+              <Label className="grid min-w-0 gap-2 text-sm">
                 测量时间（上海时间）
-                <input
+                <Input
                   name="measured_at"
                   type="datetime-local"
                   required
@@ -766,193 +853,205 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
                           .slice(0, 16)
                   }
                 />
-              </label>
-              <label>
+              </Label>
+              <Label className="grid min-w-0 gap-2 text-sm">
                 备注
-                <input
+                <Input
                   name="notes"
                   maxLength={4000}
                   defaultValue={editMetric?.notes || ""}
                 />
-              </label>
-              <div className="actions">
-                <button disabled={busy}>保存指标</button>
+              </Label>
+              <div className="flex flex-wrap items-start gap-2">
+                <Button disabled={busy}>保存指标</Button>
                 {editMetric && (
-                  <button
+                  <Button
                     type="button"
-                    className="secondary"
                     onClick={() => setEditMetric(null)}
+                    variant="outline"
                   >
                     取消编辑
-                  </button>
+                  </Button>
                 )}
               </div>
             </form>
-          </section>
-          <section className="panel">
-            <h2>身体指标趋势</h2>
-            <div className="filters">
-              <label>
+          </Card>
+          <Card className="gap-4 p-5 shadow-none">
+            <h2 className="min-w-0 break-words text-base font-semibold tracking-tight">
+              身体指标趋势
+            </h2>
+            <div className="flex flex-wrap items-end gap-3 [&>label]:w-full [&>label]:sm:w-44">
+              <Label className="grid min-w-0 gap-2 text-sm">
                 指标
-                <select value={kind} onChange={(e) => setKind(e.target.value)}>
+                <SelectField
+                  value={kind}
+                  onChange={(e) => setKind(e.target.value)}
+                >
                   {Object.entries(metricNames).map(([k, v]) => (
                     <option key={k} value={k}>
                       {v}
                     </option>
                   ))}
-                </select>
-              </label>
-              <label>
+                </SelectField>
+              </Label>
+              <Label className="grid min-w-0 gap-2 text-sm">
                 来源
-                <select
+                <SelectField
                   value={source}
                   onChange={(e) => setSource(e.target.value)}
                 >
                   <option value="">全部来源</option>
                   <option value="manual">手动记录</option>
                   <option value="device">设备采集</option>
-                </select>
-              </label>
-              <label>
+                </SelectField>
+              </Label>
+              <Label className="grid min-w-0 gap-2 text-sm">
                 开始日期
-                <input
+                <Input
                   type="date"
                   value={from}
                   onChange={(e) => setFrom(e.target.value)}
                 />
-              </label>
-              <label>
+              </Label>
+              <Label className="grid min-w-0 gap-2 text-sm">
                 结束日期
-                <input
+                <Input
                   type="date"
                   min={from}
                   value={to}
                   onChange={(e) => setTo(e.target.value)}
                 />
-              </label>
-              <label>
+              </Label>
+              <Label className="grid min-w-0 gap-2 text-sm">
                 汇总
-                <select
+                <SelectField
                   value={group}
                   onChange={(e) => setGroup(e.target.value)}
                 >
                   <option value="day">按日</option>
                   <option value="week">按周</option>
                   <option value="month">按月</option>
-                </select>
-              </label>
+                </SelectField>
+              </Label>
             </div>
-            <p>
+            <p className="text-sm leading-6 text-muted-foreground">
               BMI
               根据体重和当时已记录的身高计算；无历史身高时使用记录当时的成员身高，保存快照后不随资料修改变化。估算值会单独标注。
             </p>
             <MetricChart rows={stats} />
             {statsTotal > 200 && (
-              <div className="pagination">
-                <button
-                  className="secondary"
+              <div className="flex flex-wrap items-center justify-end gap-3 py-2 text-xs text-muted-foreground">
+                <Button
                   disabled={statsPage === 1}
                   onClick={() => setStatsPage(statsPage - 1)}
+                  variant="outline"
                 >
                   统计上一页
-                </button>
+                </Button>
                 <span>
                   统计第 {statsPage} 页 · 共 {statsTotal} 组
                 </span>
-                <button
-                  className="secondary"
+                <Button
                   disabled={statsPage * 200 >= statsTotal}
                   onClick={() => setStatsPage(statsPage + 1)}
+                  variant="outline"
                 >
                   统计下一页
-                </button>
+                </Button>
               </div>
             )}
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>测量时间</th>
-                    <th>数值</th>
-                    <th>来源与说明</th>
-                    <th>操作</th>
-                  </tr>
-                </thead>
-                <tbody>
+            <div className="min-w-0 max-w-full overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>测量时间</TableHead>
+                    <TableHead>数值</TableHead>
+                    <TableHead>来源与说明</TableHead>
+                    <TableHead>操作</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {rows.map((o) => (
-                    <tr key={o.id}>
-                      <td>{date(o.measured_at)}</td>
-                      <td>
+                    <TableRow key={o.id}>
+                      <TableCell className="align-top">
+                        {date(o.measured_at)}
+                      </TableCell>
+                      <TableCell className="align-top">
                         {Number(o.value).toFixed(2)}
                         {o.value_secondary != null
                           ? ` / ${Number(o.value_secondary).toFixed(2)}`
                           : ""}{" "}
                         {o.unit}
-                      </td>
-                      <td>
+                      </TableCell>
+                      <TableCell className="align-top">
                         {o.source === "device" ? "设备采集" : "手动记录"}
                         {o.estimated ? " · 估算" : ""}
                         {o.age_approximate ? " · 年龄近似" : ""}
-                        <small>{o.notes}</small>
-                      </td>
-                      <td>
+                        <small className="block text-xs leading-5 text-muted-foreground">
+                          {o.notes}
+                        </small>
+                      </TableCell>
+                      <TableCell className="align-top">
                         {o.source === "manual" && !o.estimated && (
-                          <div className="actions">
-                            <button
-                              className="link"
+                          <div className="flex flex-wrap items-start gap-2">
+                            <Button
                               onClick={() => setEditMetric(o)}
+                              variant="link"
                             >
                               编辑指标
-                            </button>
-                            <button
-                              className="link"
-                              disabled={busy}
-                              onClick={() => {
-                                if (confirm("删除这条手动记录？"))
-                                  action(() =>
-                                    api(
-                                      `members/${selected}/observations/${o.source_record_id}`,
-                                      "DELETE",
-                                    ),
-                                  );
-                              }}
-                            >
-                              删除指标
-                            </button>
+                            </Button>
+                            <ConfirmAction
+                              label="删除指标"
+                              description="删除这条手动记录？"
+                              busy={busy}
+                              action={action}
+                              run={() =>
+                                api(
+                                  `members/${selected}/observations/${o.source_record_id}`,
+                                  "DELETE",
+                                )
+                              }
+                            />
                           </div>
                         )}
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
-            {!rows.length && <p>暂无该指标记录。</p>}
+            {!rows.length && (
+              <p className="text-sm leading-6 text-muted-foreground">
+                暂无该指标记录。
+              </p>
+            )}
             <Pages page={page} total={total} setPage={setPage} />
-          </section>
+          </Card>
         </>
       )}
       {section === "documents" && (
         <>
-          <section className="panel">
-            <h2>{editDocument ? "编辑文件资料" : "添加医疗文件"}</h2>
+          <Card className="gap-4 p-5 shadow-none">
+            <h2 className="min-w-0 break-words text-base font-semibold tracking-tight">
+              {editDocument ? "编辑文件资料" : "添加医疗文件"}
+            </h2>
             <form
-              className="form-grid"
+              className="grid min-w-0 items-end gap-4 sm:grid-cols-2 [&>button]:justify-self-start"
               key={editDocument?.id || "new"}
               onSubmit={saveDoc}
             >
-              <label>
+              <Label className="grid min-w-0 gap-2 text-sm">
                 标题
-                <input
+                <Input
                   name="title"
                   required
                   maxLength={200}
                   defaultValue={editDocument?.title || ""}
                 />
-              </label>
-              <label>
+              </Label>
+              <Label className="grid min-w-0 gap-2 text-sm">
                 类型
-                <select
+                <SelectField
                   name="category"
                   defaultValue={editDocument?.category || "report"}
                 >
@@ -961,37 +1060,39 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
                       {v}
                     </option>
                   ))}
-                </select>
-              </label>
-              <label>
+                </SelectField>
+              </Label>
+              <Label className="grid min-w-0 gap-2 text-sm">
                 检查日期
-                <input
+                <Input
                   name="recorded_on"
                   type="date"
                   defaultValue={editDocument?.recorded_on?.slice(0, 10) || ""}
                 />
-              </label>
-              <label>
+              </Label>
+              <Label className="grid min-w-0 gap-2 text-sm">
                 医疗机构
-                <input
+                <Input
                   name="institution"
                   maxLength={200}
                   defaultValue={editDocument?.institution || ""}
                 />
-              </label>
-              <label>
+              </Label>
+              <Label className="grid min-w-0 gap-2 text-sm">
                 搜索关联经历
-                <input
+                <Input
                   value={historySearch}
                   onChange={(e) => setHistorySearch(e.target.value)}
                   placeholder="按标题搜索"
                 />
-              </label>
-              <label>
+              </Label>
+              <Label className="grid min-w-0 gap-2 text-sm">
                 关联健康经历
-                <select
+                <SelectField
                   name="history_id"
-                  value={editDocument ? editDocument.history_id || "" : linkedHistory}
+                  value={
+                    editDocument ? editDocument.history_id || "" : linkedHistory
+                  }
                   onChange={(e) => {
                     if (editDocument)
                       setEditDocument({
@@ -1007,144 +1108,145 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
                       {h.title}
                     </option>
                   ))}
-                </select>
-              </label>
+                </SelectField>
+              </Label>
               {!editDocument && (
-                <label>
+                <Label className="grid min-w-0 gap-2 text-sm">
                   原件（默认最大 25 MiB）
-                  <input
+                  <Input
                     name="file"
                     type="file"
                     required
                     accept="application/pdf,image/jpeg,image/png,image/webp,image/heic,.heic,.heif"
                   />
-                </label>
+                </Label>
               )}
-              <label className="wide-field">
+              <Label className="grid min-w-0 gap-2 text-sm sm:col-span-2">
                 摘要
-                <textarea
+                <Textarea
                   name="summary"
                   maxLength={8000}
                   rows={3}
                   defaultValue={editDocument?.summary || ""}
                 />
-              </label>
-              <div className="actions">
-                <button disabled={busy}>
+              </Label>
+              <div className="flex flex-wrap items-start gap-2">
+                <Button disabled={busy}>
                   {busy ? "正在保存…" : "保存医疗文件"}
-                </button>
+                </Button>
                 {editDocument && (
-                  <button
-                    className="secondary"
+                  <Button
                     type="button"
                     onClick={() => setEditDocument(null)}
+                    variant="outline"
                   >
                     取消编辑
-                  </button>
+                  </Button>
                 )}
               </div>
             </form>
-            <p>
+            <p className="text-sm leading-6 text-muted-foreground">
               原件完整保留；PDF 可选取的文字供 AI
               读取。照片和扫描件通过页面预览读取。
             </p>
-          </section>
-          <section className="panel">
-            <h2>医疗文件</h2>
+          </Card>
+          <Card className="gap-4 p-5 shadow-none">
+            <h2 className="min-w-0 break-words text-base font-semibold tracking-tight">
+              医疗文件
+            </h2>
             {documents.map((d) => (
-              <article className="health-entry" key={d.id}>
-                <h3>{d.title}</h3>
-                <p>
+              <article
+                className="space-y-3 border-b py-5 last:border-0"
+                key={d.id}
+              >
+                <h3 className="text-sm font-semibold">{d.title}</h3>
+                <p className="text-sm leading-6 text-muted-foreground">
                   {documentNames[d.category] || d.category} ·{" "}
                   {d.recorded_on?.slice(0, 10) || "日期未注明"} ·{" "}
                   {d.institution || "机构未注明"}
                 </p>
-                <p>{d.summary}</p>
-                <small>
+                <p className="text-sm leading-6 text-muted-foreground">
+                  {d.summary}
+                </p>
+                <small className="block text-xs leading-5 text-muted-foreground">
                   {d.filename} · {(d.size / 1048576).toFixed(2)} MiB ·{" "}
                   {d.page_count} 页
                 </small>
-                <div className="actions">
-                  <button
-                    className="secondary"
+                <div className="flex flex-wrap items-start gap-2">
+                  <Button
                     onClick={() => {
                       setPreview(d);
                       setPreviewPage(1);
                       setText("");
                     }}
+                    variant="outline"
                   >
                     预览文件
-                  </button>
-                  <a
-                    className="button secondary"
-                    href={`/api/v1/documents/${d.id}/download`}
-                  >
-                    下载原件
-                  </a>
-                  <button
-                    className="secondary"
-                    onClick={() => setEditDocument(d)}
-                  >
+                  </Button>
+                  <Button asChild variant="outline">
+                    <a href={`/api/v1/documents/${d.id}/download`}>下载原件</a>
+                  </Button>
+                  <Button onClick={() => setEditDocument(d)} variant="outline">
                     编辑文件信息
-                  </button>
-                  <button
-                    className="secondary"
-                    disabled={busy}
-                    onClick={() => {
-                      if (confirm(`删除“${d.title}”及原件？`))
-                        action(async () => {
-                          await api(
-                            `members/${selected}/documents/${d.id}`,
-                            "DELETE",
-                          );
-                          if (preview?.id === d.id) setPreview(null);
-                        });
+                  </Button>
+                  <ConfirmAction
+                    label="删除文件"
+                    description={`删除“${d.title}”及原件？`}
+                    busy={busy}
+                    action={action}
+                    run={async () => {
+                      await api(
+                        `members/${selected}/documents/${d.id}`,
+                        "DELETE",
+                      );
+                      if (preview?.id === d.id) setPreview(null);
                     }}
-                  >
-                    删除文件
-                  </button>
+                  />
                 </div>
               </article>
             ))}
-            {!documents.length && <p>暂无医疗文件。</p>}
+            {!documents.length && (
+              <p className="text-sm leading-6 text-muted-foreground">
+                暂无医疗文件。
+              </p>
+            )}
             <Pages
               page={documentPage}
               total={documentTotal}
               setPage={setDocumentPage}
             />
-          </section>
+          </Card>
           {preview && (
-            <section className="panel">
-              <div className="section-title">
-                <h2>
+            <Card className="gap-4 p-5 shadow-none">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="min-w-0 break-words text-base font-semibold tracking-tight">
                   {preview.title} · 第 {previewPage} / {preview.page_count} 页
                 </h2>
-                <button className="secondary" onClick={() => setPreview(null)}>
+                <Button onClick={() => setPreview(null)} variant="outline">
                   关闭预览
-                </button>
+                </Button>
               </div>
               <img
-                className="medical-preview"
+                className="mx-auto block h-auto max-w-full rounded-lg border"
                 src={`/api/v1/documents/${preview.id}/pages/${previewPage}`}
                 alt={`${preview.title}第${previewPage}页`}
               />
-              <div className="actions">
-                <button
-                  className="secondary"
+              <div className="flex flex-wrap items-start gap-2">
+                <Button
                   disabled={previewPage <= 1}
                   onClick={() => setPreviewPage(previewPage - 1)}
+                  variant="outline"
                 >
                   上一页
-                </button>
-                <button
-                  className="secondary"
+                </Button>
+                <Button
                   disabled={previewPage >= preview.page_count}
                   onClick={() => setPreviewPage(previewPage + 1)}
+                  variant="outline"
                 >
                   下一页
-                </button>
-                <button
-                  className="secondary"
+                </Button>
+                <Button
                   onClick={() =>
                     action(async () => {
                       const v = await api(`documents/${preview.id}/text`);
@@ -1153,12 +1255,17 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
                       );
                     }, "已读取文件文字")
                   }
+                  variant="outline"
                 >
                   查看文件文字
-                </button>
+                </Button>
               </div>
-              {text && <pre className="document-text">{text}</pre>}
-            </section>
+              {text && (
+                <pre className="max-w-full max-h-[420px] overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted p-4 text-xs">
+                  {text}
+                </pre>
+              )}
+            </Card>
           )}
         </>
       )}

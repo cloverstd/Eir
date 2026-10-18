@@ -1451,7 +1451,7 @@
             }
           }
         },
-        "description": "SSE：change 表示普通数据变化；signals 表示信号数据变化。初始连接发送 change；客户端重连后重新读取最新值。"
+        "description": "SSE：change 表示普通数据变化；signals 表示信号数据变化；heartbeat 每 20 秒发送一次用于连接活性检查。初始连接发送 change；客户端重连后重新读取最新值。"
       }
     },
     "/firmwares": {
@@ -3486,6 +3486,178 @@
           }
         }
       }
+    },
+    "/measurements/latest": {
+      "get": {
+        "summary": "各成员各指标最新有效设备读数",
+        "description": "不指定 kind 时同时查询血压与称重；忽略 from/to。各指标独立选择最近有效测量，体脂仅包含 estimated，排除未锁定及未校时记录。待归属数据的 member_id 为 null。",
+        "parameters": [
+          {
+            "name": "member_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "device_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "blood_pressure",
+                "body_composition"
+              ]
+            }
+          },
+          {
+            "name": "unassigned",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/LatestMeasurementMetric"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid filters or cursor"
+          },
+          "500": {
+            "description": "Service unavailable"
+          }
+        }
+      }
+    },
+    "/measurements/series": {
+      "get": {
+        "summary": "按原始测量时间和 ID 游标分页的完整趋势点",
+        "description": "每批最多 1000 个原始点，按 measured_at,id 升序；默认 kind=blood_pressure。客户端应持续读取 next_cursor 至 null。游标固定首次查询的接收时间上界。未校时记录不返回，未锁定体重保留 weight_valid=false 供图表显示断点；缺失体脂由 body_fat_status 判定，不能绘为 0。不返回原始蓝牙包。",
+        "parameters": [
+          {
+            "name": "member_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "device_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "blood_pressure",
+                "body_composition"
+              ]
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "unassigned",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "上页 next_cursor；其余筛选条件必须保持一致。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "next_cursor"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "maxItems": 1000,
+                      "items": {
+                        "$ref": "#/components/schemas/MeasurementPoint"
+                      }
+                    },
+                    "next_cursor": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid filters or cursor"
+          },
+          "500": {
+            "description": "Service unavailable"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -4222,6 +4394,12 @@
               "created_at": {
                 "type": "string",
                 "format": "date-time"
+              },
+              "last_measured_at": {
+                "type": "string",
+                "format": "date-time",
+                "nullable": true,
+                "description": "该设备最近一次有时间的测量，未测量时为空。"
               }
             },
             "required": []
@@ -5229,6 +5407,140 @@
           }
         },
         "description": "无有效样本时 mean/min/max=null、count=0，曲线断开"
+      },
+      "MeasurementPoint": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "measured_at",
+          "weight_valid"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "member_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "device_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "device_name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "blood_pressure",
+              "body_composition"
+            ]
+          },
+          "measured_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "time_valid": {
+            "type": "boolean"
+          },
+          "weight_valid": {
+            "type": "boolean",
+            "description": "原始 D5 是否为锁定读数；早期调试的未锁定原文保留，但不进入统计或趋势。"
+          },
+          "systolic": {
+            "type": "integer",
+            "nullable": true
+          },
+          "diastolic": {
+            "type": "integer",
+            "nullable": true
+          },
+          "pulse": {
+            "type": "integer",
+            "nullable": true
+          },
+          "weight_kg": {
+            "type": "number",
+            "nullable": true
+          },
+          "body_fat_pct": {
+            "type": "number",
+            "nullable": true,
+            "description": "缺失估算时存 0；必须结合 body_fat_status 判断是否有效。"
+          },
+          "body_fat_status": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "missing_adc",
+              "missing_profile",
+              "invalid_time",
+              "estimated"
+            ]
+          }
+        }
+      },
+      "LatestMeasurementMetric": {
+        "type": "object",
+        "required": [
+          "record_id",
+          "member_id",
+          "metric",
+          "value",
+          "measured_at",
+          "unit"
+        ],
+        "properties": {
+          "record_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "member_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "device_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "measured_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "metric": {
+            "type": "string",
+            "enum": [
+              "blood_pressure",
+              "pulse",
+              "weight",
+              "body_fat"
+            ]
+          },
+          "value": {
+            "type": "number"
+          },
+          "value_secondary": {
+            "type": "number",
+            "nullable": true
+          },
+          "unit": {
+            "type": "string"
+          }
+        }
       }
     }
   }

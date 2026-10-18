@@ -12,11 +12,15 @@ import (
 )
 
 func filters(r *http.Request) (string, []any, error) {
+	return measurementFilters(r, true)
+}
+
+func measurementFilters(r *http.Request, defaultKind bool) (string, []any, error) {
 	q := r.URL.Query()
 	clauses := []string{"true"}
-	if q.Get("kind") == "" {
+	if q.Get("kind") == "" && defaultKind {
 		clauses = append(clauses, "kind='blood_pressure'")
-	} else if q.Get("kind") != "blood_pressure" && q.Get("kind") != "body_composition" {
+	} else if q.Get("kind") != "" && q.Get("kind") != "blood_pressure" && q.Get("kind") != "body_composition" {
 		return "", nil, fmt.Errorf("unsupported measurement kind")
 	}
 	args := []any{}

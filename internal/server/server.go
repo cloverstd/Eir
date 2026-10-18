@@ -141,7 +141,7 @@ func (s *Server) Handler() http.Handler {
 	m.HandleFunc("PUT /api/v1/collectors/{id}", s.collector)
 	m.HandleFunc("POST /api/v1/collectors/{id}/commands", s.command)
 	m.HandleFunc("GET /api/v1/devices", func(w http.ResponseWriter, r *http.Request) {
-		s.list(w, r, "SELECT * FROM devices ORDER BY created_at")
+		s.list(w, r, "SELECT d.*,(SELECT max(measured_at) FROM measurements WHERE device_id=d.id) AS last_measured_at FROM devices d ORDER BY created_at")
 	})
 	m.HandleFunc("POST /api/v1/devices", s.device)
 	m.HandleFunc("PATCH /api/v1/devices/{id}", s.deviceSettings)
@@ -153,6 +153,8 @@ func (s *Server) Handler() http.Handler {
 	})
 	m.HandleFunc("POST /api/v1/bindings", s.binding)
 	m.HandleFunc("GET /api/v1/measurements", s.measurements)
+	m.HandleFunc("GET /api/v1/measurements/latest", s.latestMeasurements)
+	m.HandleFunc("GET /api/v1/measurements/series", s.measurementSeries)
 	m.HandleFunc("GET /api/v1/measurements/export.csv", s.export)
 	m.HandleFunc("PATCH /api/v1/measurements/{id}", s.correction)
 	m.HandleFunc("GET /api/v1/statistics", s.statistics)
@@ -251,7 +253,7 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprint(w, "event: signals\ndata: {}\n\n")
 			f.Flush()
 		case <-ticker.C:
-			fmt.Fprint(w, ": keepalive\n\n")
+			fmt.Fprint(w, ": keepalive\nevent: heartbeat\ndata: {}\n\n")
 			f.Flush()
 		}
 	}

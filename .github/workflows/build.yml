@@ -73,6 +73,7 @@ jobs:
           ./scripts/body_integration.sh
           ./scripts/health_integration.sh
           ./scripts/signals_integration.sh
+          ./scripts/frontend_integration.sh
       - name: Preserve synthetic failure logs
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

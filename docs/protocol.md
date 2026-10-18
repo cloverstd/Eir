@@ -99,3 +99,13 @@ AFU 绑定验证 FFB0／FFB2 后准备一个空基线块，其他生命周期两
 REST 查询 `kind=body_composition` 返回体重和估算值及其状态；未指定 kind 时兼容旧客户端，默认血压。`PATCH /api/v1/devices/{id}` 接受 `adc_index:0|1`，仅影响新记录。个人资料及 `body_fat_pct=0` 缺测约定详见 [体脂秤说明](body-scale.md)。
 
 稳定 D5 需同时满足 `raw[2]&0x80` 和 `raw[6]==2`；未锁定通知拒收。解析版本 `afu-tz-a1-v2`。测量响应增加 `weight_valid`；旧调试原文可见但不进入统计，体脂估算显示同样受有效性约束。
+
+## Web 测量查询与实时更新
+
+`GET /api/v1/measurements/latest` 按成员及指标分别选取最近有效设备测量，返回 `items`，每项包含 `member_id`、`member_name`、`device_id`、`metric`、`record_id`、`measured_at`、`value`、`value_secondary`、`unit`。`metric` 为 `blood_pressure`、`pulse`、`weight` 或 `body_fat`；血压的副值是舒张压，其他指标副值为空。支持 `member_id`、`device_id`、`kind` 和 `unassigned`；不指定 kind 时同时查询血压与称重，忽略时间窗口。未校时、未锁定体重及非 estimated 体脂不作为最新有效值；体脂可以来自较早记录，必须保留其自身时间。
+
+`GET /api/v1/measurements/series` 沿用测量列表的成员、设备、类型及 `[from,to)` 时间筛选，每批返回最多 1000 个原始点与 `next_cursor`。按 `measured_at,id` 升序读取，后续请求保持筛选不变并传回游标，直到游标为空；首次查询的接收时间上界随游标保留。响应只包含图表字段，不含蓝牙原文。未校时记录仅在原记录表中显示；未锁定体重保留 `weight_valid=false`，前端将它绘为缺测断点，缺失体脂也不能把存储用 0 当作测量值。
+
+Web 全站共用 `/api/v1/events/stream` 一条 SSE 连接。`change` 合并触发当前页面重新查询，`signals` 只使信号数据失效，`heartbeat` 每 20 秒报告连接活性；连接恢复和页面重新可见时补读。断线及超过 45 秒无活动的代理连接采用有界退避重连，断线期间每 30 秒兜底读取，保留上次成功结果。查询支持取消与旧响应隔离，自动更新保留未保存表单、分页、图例、缩放及设备展开状态。
+
+页面 URL 的 `zoom_from`、`zoom_to` 使用 RFC3339 毫秒时间。图表仍保留完整基础数据范围，记录表和 CSV 将当前视野转为 API 的半开时间区间；末端毫秒包含在所选范围内。原有日期筛选、列表分页和统计接口继续兼容。设备列表另提供可空的 `last_measured_at` 用于摘要显示，不用添加时间冒充最近测量时间。
