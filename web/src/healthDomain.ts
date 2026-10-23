@@ -1,4 +1,29 @@
 import { rangeBounds } from "./dateDomain.ts";
+import type { Row } from "./api";
+
+// Overview curves need every original observation, independently of table paging.
+export async function loadObservationSeries(
+  query: string,
+  read: (path: string) => Promise<{ items: Row[]; total: number }>,
+) {
+  const q = new URLSearchParams(query);
+  q.delete("group");
+  q.set("page_size", "200");
+  const rows = new Map<string, Row>();
+  for (let page = 1; page <= 100000; page++) {
+    q.set("page", String(page));
+    const result = await read("health/observations?" + q);
+    if (!Number.isSafeInteger(result.total) || result.total < 0)
+      throw new Error("历史数据分页异常，请稍后重试");
+    const previousSize = rows.size;
+    for (const row of result.items) rows.set(row.id, row);
+    if (page * 200 >= result.total) return [...rows.values()];
+    if (rows.size === previousSize)
+      throw new Error("历史数据分页异常，请稍后重试");
+  }
+  throw new Error("历史数据过多，请缩小时间范围");
+}
+
 export const metricNames: Record<string, string> = {
   height: "身高",
   weight: "体重",

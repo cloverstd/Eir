@@ -8,6 +8,7 @@ import {
   Droplets,
   LoaderCircle,
   RotateCcw,
+  Ruler,
 } from "lucide-react";
 import { api, date, number } from "./api";
 import type { Row } from "./api";
@@ -15,6 +16,8 @@ import { useResource } from "./realtime";
 import { useQueryState } from "./routing";
 import { measurementCorrection, measurementQuery } from "./domain";
 import { shanghaiDay } from "./dateDomain";
+import { healthQuery, loadObservationSeries } from "./healthDomain";
+import { WaistRecordDialog } from "./waist";
 import {
   bodyFatStatus,
   bodyFatValue,
@@ -82,30 +85,47 @@ const titles: Record<Metric, string> = {
   body_fat: "估算体脂率",
   blood_pressure: "血压",
   pulse: "脉搏",
+  waist: "腰围",
 };
 const units: Record<Metric, string> = {
   weight: "kg",
   body_fat: "%",
   blood_pressure: "mmHg",
   pulse: "次/分",
+  waist: "cm",
 };
 const icons = {
   weight: Scale,
   body_fat: Droplets,
   blood_pressure: HeartPulse,
   pulse: Activity,
+  waist: Ruler,
 };
-const allMetrics: Metric[] = ["weight", "body_fat", "blood_pressure", "pulse"];
-function LatestCards({ items, metrics }: { items: Row[]; metrics: Metric[] }) {
+const deviceMetrics: Metric[] = ["weight", "body_fat", "blood_pressure", "pulse"];
+const allMetrics: Metric[] = [...deviceMetrics, "waist"];
+function LatestCards({
+  items,
+  metrics,
+  loading,
+  unavailable,
+}: {
+  items: Row[];
+  metrics: Metric[];
+  loading: Metric[];
+  unavailable: Metric[];
+}) {
   return (
     <div
-      className={`grid grid-cols-2 gap-3 ${metrics.length === 4 ? "xl:grid-cols-4" : ""}`}
+      className={`grid grid-cols-2 gap-3 ${metrics.length === 5 ? "xl:grid-cols-5" : ""}`}
     >
       {metrics.map((metric) => {
         const row = items.find((item) => item.metric === metric),
           Icon = icons[metric];
         return (
-          <Card key={metric} className="gap-3 py-4 shadow-none">
+          <Card
+            key={metric}
+            className={`gap-3 py-4 shadow-none ${metric === "waist" ? "col-span-2 xl:col-span-1" : ""}`}
+          >
             <CardHeader className="flex flex-row items-center justify-between gap-2 px-4">
               <CardDescription className="text-xs font-medium">
                 {titles[metric]}
@@ -113,20 +133,30 @@ function LatestCards({ items, metrics }: { items: Row[]; metrics: Metric[] }) {
               <Icon className="size-4 text-muted-foreground" />
             </CardHeader>
             <CardContent className="space-y-2 px-4">
-              <div className="flex flex-wrap items-baseline gap-x-2">
-                <span className="text-2xl font-semibold tracking-tight tabular-nums sm:text-3xl">
-                  {row
-                    ? metric === "blood_pressure"
-                      ? `${number(row.value, 0)}/${number(row.value_secondary, 0)}`
-                      : number(row.value, metric === "weight" ? 2 : 1)
-                    : "—"}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {units[metric]}
-                </span>
-              </div>
+              {loading.includes(metric) ? (
+                <Skeleton className="h-9 w-24" />
+              ) : (
+                <div className="flex flex-wrap items-baseline gap-x-2">
+                  <span className="text-2xl font-semibold tracking-tight tabular-nums sm:text-3xl">
+                    {row
+                      ? metric === "blood_pressure"
+                        ? `${number(row.value, 0)}/${number(row.value_secondary, 0)}`
+                        : number(row.value, metric === "weight" ? 2 : 1)
+                      : "—"}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {units[metric]}
+                  </span>
+                </div>
+              )}
               <p className="text-xs leading-5 text-muted-foreground">
-                {row ? date(row.measured_at) : "暂无有效测量"}
+                {row
+                  ? date(row.measured_at)
+                  : loading.includes(metric)
+                    ? "正在加载…"
+                    : unavailable.includes(metric)
+                      ? "暂时无法读取"
+                      : "暂无有效测量"}
               </p>
             </CardContent>
           </Card>
@@ -144,6 +174,7 @@ function MetricPlot({
   familyMembers,
   range,
   domain,
+  error,
 }: {
   metric: Metric;
   rows: Row[];
@@ -153,6 +184,7 @@ function MetricPlot({
   familyMembers?: Row[];
   range?: TimeRange;
   domain?: TimeRange;
+  error?: string;
 }) {
   const series = useMemo(
     () => familyMembers
@@ -166,7 +198,14 @@ function MetricPlot({
   );
   const referenceHint = (
     <>
-      {familyMembers ? (
+      {metric === "waist" ? (
+        <p>
+          手动记录的腰围，单位 cm。
+          {familyMembers
+            ? "颜色区分成员；选择成员后可查看最新腰围。"
+            : "按实际测量时间展示原始记录。"}
+        </p>
+      ) : familyMembers ? (
         <p>
           颜色区分成员；血压实线为收缩压，虚线为舒张压。
           选择成员后可查看个人参考范围和最新读数。
@@ -194,7 +233,7 @@ function MetricPlot({
     </>
   );
   return (
-    <Card className="min-w-0 gap-2 py-5 shadow-none">
+    <Card className={`min-w-0 gap-2 py-5 shadow-none ${metric === "waist" ? "xl:col-span-2" : ""}`}>
       <CardHeader className="flex flex-row items-center justify-between gap-2 px-5">
         <div className="space-y-1.5">
           <CardTitle className="text-sm font-medium">
@@ -223,7 +262,11 @@ function MetricPlot({
           />
         ) : (
           <div className="p-3">
-            <Empty>当前时间范围暂无有效{titles[metric]}数据</Empty>
+            <Empty>
+              {error
+                ? `${titles[metric]}数据暂时无法读取，请稍后重试`
+                : `当前时间范围暂无有效${titles[metric]}数据`}
+            </Empty>
           </div>
         )}
       </CardContent>
@@ -267,6 +310,7 @@ export function MeasurementsPage({
   const range = zoomRange(zoomFrom, zoomTo);
   const familyOverview = overview && !member;
   const [editing, setEditing] = useState<Row | null>(null);
+  const [recordingWaist, setRecordingWaist] = useState(false);
   // The rolling boundary is stable while paging, and advances on data refresh.
   const now = useMemo(() => Date.now(), [period, revision]);
   const scope = {
@@ -315,6 +359,32 @@ export function MeasurementsPage({
     [],
     revision,
   );
+  const waistQuery = healthQuery(member, "waist", 1, from, to, "day", "", period, now);
+  const waistCurves = useResource<Row[]>(
+    overview ? "waist-series:" + waistQuery : null,
+    (signal) => loadObservationSeries(
+      waistQuery,
+      (path) => api(path, "GET", undefined, signal),
+    ),
+    [],
+    revision,
+  );
+  const waistLatestQuery = new URLSearchParams({
+    member_id: member,
+    kind: "waist",
+    page_size: "1",
+  });
+  const waistLatest = useResource<Row[]>(
+    overview && member ? "waist-latest:" + waistLatestQuery : null,
+    async (signal) => {
+      const result = await api(
+        "health/observations?" + waistLatestQuery, "GET", undefined, signal,
+      );
+      return result.items.map((row: Row) => ({ ...row, metric: "waist" }));
+    },
+    [],
+    revision,
+  );
   const tableQuery = new URLSearchParams(applyZoom(query, range));
   tableQuery.set("page", String(page));
   const table = useResource<{ items: Row[]; total: number }>(
@@ -345,7 +415,18 @@ export function MeasurementsPage({
       ? ["weight", "body_fat"]
       : ["blood_pressure", "pulse"];
   const memberIDs = new Set(members.map((m) => m.id));
-  const times = curves.data
+  const plotRows = overview ? curves.data.concat(waistCurves.data) : curves.data;
+  const latestRows = overview ? latest.data.concat(waistLatest.data) : latest.data;
+  const loadingMetrics: Metric[] = [
+    ...(!latest.loaded && latest.loading ? deviceMetrics : []),
+    ...(!waistLatest.loaded && waistLatest.loading ? ["waist" as const] : []),
+  ];
+  const unavailableMetrics: Metric[] = [
+    ...(latest.error ? deviceMetrics : []),
+    ...(waistLatest.error ? ["waist" as const] : []),
+  ];
+  const curveResource = (metric: Metric) => metric === "waist" ? waistCurves : curves;
+  const times = plotRows
     .filter((row) => !familyOverview || memberIDs.has(row.member_id))
     .map((row) => Date.parse(row.measured_at));
   const min = times.reduce((a, b) => Math.min(a, b), Infinity),
@@ -353,7 +434,7 @@ export function MeasurementsPage({
   const domain = Number.isFinite(min)
     ? { from: min, to: max > min ? max : min + 60000 }
     : undefined;
-  const error = latest.error || curves.error || table.error;
+  const error = latest.error || curves.error || table.error || waistCurves.error || waistLatest.error;
   const datePicker = (
     <DateRangePicker
       period={range ? "custom" : period}
@@ -369,6 +450,27 @@ export function MeasurementsPage({
   );
   return (
     <div className="space-y-6">
+      {overview && (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {member && members.some((m) => m.id === member) && (
+            <Button variant="outline" asChild>
+              <Link to={`/members/${member}/metrics?kind=waist`}>查看腰围历史</Link>
+            </Button>
+          )}
+          <Button disabled={busy || !members.length} onClick={() => setRecordingWaist(true)}>
+            <Ruler className="size-4" />记录腰围
+          </Button>
+        </div>
+      )}
+      {overview && recordingWaist && (
+        <WaistRecordDialog
+          members={members}
+          member={member}
+          busy={busy}
+          action={action}
+          onClose={() => setRecordingWaist(false)}
+        />
+      )}
       {overview && (
         <div className="flex min-w-0 items-center justify-between gap-3">
           <Tabs
@@ -396,7 +498,7 @@ export function MeasurementsPage({
             {datePicker}
             <InfoTip label="概览说明">
               <p>
-                全员按指标对比各成员曲线；选择成员后，读数卡显示其各指标最新有效设备测量及实际测量时间，不受图表时间范围影响。
+                全员按指标对比各成员曲线；选择成员后，读数卡显示最新设备测量与手动腰围记录及实际测量时间，不受图表时间范围影响。
               </p>
               <p>
                 新测量自动同步。趋势保留原始测量点，通过时间选择器切换查看范围。
@@ -408,7 +510,7 @@ export function MeasurementsPage({
                 </p>
               )}
             </InfoTip>
-            {curves.loading && (
+            {(curves.loading || waistCurves.loading) && (
               <LoaderCircle
                 className="size-4 animate-spin text-muted-foreground"
                 role="status"
@@ -537,13 +639,14 @@ export function MeasurementsPage({
       ) : familyOverview ? (
         <div className="grid min-w-0 gap-4 xl:grid-cols-2">
           {metrics.map((metric) =>
-            curves.loading && !curves.data.length ? (
-              <Skeleton key={metric} className="h-96" />
+            curveResource(metric).loading && !curveResource(metric).data.length ? (
+              <Skeleton key={metric} className={`h-96 ${metric === "waist" ? "xl:col-span-2" : ""}`} />
             ) : (
               <MetricPlot
                 key={metric}
                 metric={metric}
-                rows={curves.data}
+                rows={plotRows}
+                error={curveResource(metric).error}
                 member={{ name: "全员" }}
                 familyMembers={members}
                 overview
@@ -572,26 +675,22 @@ export function MeasurementsPage({
                 )}
               </div>
             )}
-            {latest.loading && !latest.data.length ? (
-              <div className="grid grid-cols-2 gap-3">
-                <Skeleton className="h-32" />
-                <Skeleton className="h-32" />
-              </div>
-            ) : (
-              <LatestCards
-                items={latest.data.filter((row) => row.member_id === m.id)}
-                metrics={metrics}
-              />
-            )}
+            <LatestCards
+              items={latestRows.filter((row) => row.member_id === m.id)}
+              metrics={metrics}
+              loading={loadingMetrics}
+              unavailable={unavailableMetrics}
+            />
             <div className="grid min-w-0 gap-4 xl:grid-cols-2">
               {metrics.map((metric) =>
-                curves.loading && !curves.data.length ? (
-                  <Skeleton key={metric} className="h-96" />
+                curveResource(metric).loading && !curveResource(metric).data.length ? (
+                  <Skeleton key={metric} className={`h-96 ${metric === "waist" ? "xl:col-span-2" : ""}`} />
                 ) : (
                   <MetricPlot
                     key={metric}
                     metric={metric}
-                    rows={curves.data.filter((row) => row.member_id === m.id)}
+                    rows={plotRows.filter((row) => row.member_id === m.id)}
+                    error={curveResource(metric).error}
                     member={m}
                     overview={overview}
                     showMemberName={!overview || !member}

@@ -82,3 +82,19 @@ test("household series preserve missing body-fat gaps, empty members, and duplic
   assert.deepEqual(series[0].data.map(p => p[1]), [20, null]);
   assert.deepEqual(series[1].data, []);
 });
+
+test("waist keeps decimal original points, member colors and has no medical reference", () => {
+  const members = [{id: "a", name: "甲"}, {id: "b", name: "乙"}];
+  const rows = [
+    {id: "2", member_id: "a", kind: "waist", measured_at: "2026-10-18T02:00:00Z", value: 81.25},
+    {id: "1", member_id: "a", kind: "waist", measured_at: "2026-10-18T01:00:00Z", value: 80.5},
+    {id: "3", member_id: "b", kind: "waist", measured_at: "2026-10-18T01:00:00Z", value: 70},
+    {id: "4", member_id: null, kind: "waist", measured_at: "2026-10-18T01:00:00Z", value: 99},
+    {id: "5", member_id: "a", kind: "weight", measured_at: "2026-10-18T01:00:00Z", value: 60},
+  ];
+  const series = familyMetricSeries(rows, "waist", members);
+  assert.deepEqual(series.map(s => s.data.map(p => p[1])), [[80.5, 81.25], [70]]);
+  assert.equal(series[1].color, familyMetricSeries([], "weight", members)[1].color);
+  assert.equal(referenceFor("waist", {sex: "male", birth_date: "1990-01-01"}, now), undefined);
+  assert.deepEqual(metricSeries([], "waist")[0].data, []);
+});

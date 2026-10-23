@@ -14,7 +14,7 @@ export type Reference = {
   band?: [number, number];
   lines?: { value: number; label: string }[];
 };
-export type Metric = "blood_pressure" | "pulse" | "weight" | "body_fat";
+export type Metric = "blood_pressure" | "pulse" | "weight" | "body_fat" | "waist";
 export function ageInShanghai(member: Row, now = new Date()) {
   const birth = (member.birth_date || member.birth_month || "").slice(0, 10);
   if (!birth) return null;
@@ -40,6 +40,7 @@ export function referenceFor(
   member: Row,
   now = new Date(),
 ): Reference | undefined {
+  if (metric === "waist") return;
   const age = ageInShanghai(member, now);
   if (age === null || age < 18) return;
   if (metric === "blood_pressure")
@@ -101,11 +102,13 @@ export function metricSeries(rows: Row[], metric: Metric): ChartSeries[] {
         ? [["pulse", "脉搏"]]
         : metric === "weight"
           ? [["weight_kg", "体重"]]
-          : [["body_fat_pct", "估算体脂率"]];
+          : metric === "waist"
+            ? [["value", "腰围"]]
+            : [["body_fat_pct", "估算体脂率"]];
   const kind =
     metric === "blood_pressure" || metric === "pulse"
       ? "blood_pressure"
-      : "body_composition";
+      : metric === "waist" ? "waist" : "body_composition";
   const points = rows
     .filter(
       (row) =>
