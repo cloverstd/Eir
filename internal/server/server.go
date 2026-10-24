@@ -22,6 +22,7 @@ import (
 )
 
 type Server struct {
+	pushSender                     func(context.Context, json.RawMessage, any) (int, error)
 	Store                          *store.Store
 	Bus                            *messaging.Bus
 	PublicURL, FirmwareDir, WebDir string
@@ -119,6 +120,8 @@ func (s *Server) Handler() http.Handler {
 	m := http.NewServeMux()
 	s.lifecycleRoutes(m)
 	s.healthRoutes(m)
+	s.pushRoutes(m)
+	m.HandleFunc("GET /api/v1/offline/snapshot", s.offlineSnapshot)
 	m.Handle("/mcp", s.mcpHandler())
 	m.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { respond(w, 200, map[string]any{"status": "ok"}) })
 	m.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
@@ -188,6 +191,9 @@ func (s *Server) Handler() http.Handler {
 		}
 		p := filepath.Join(s.WebDir, filepath.Clean("/"+r.URL.Path))
 		if st, e := os.Stat(p); e == nil && !st.IsDir() {
+			if r.URL.Path == "/sw.js" || r.URL.Path == "/manifest.webmanifest" || strings.HasSuffix(r.URL.Path, ".html") {
+				w.Header().Set("Cache-Control", "no-cache")
+			}
 			files.ServeHTTP(w, r)
 			return
 		}
@@ -195,6 +201,7 @@ func (s *Server) Handler() http.Handler {
 			http.NotFound(w, r)
 			return
 		}
+		w.Header().Set("Cache-Control", "no-cache")
 		http.ServeFile(w, r, filepath.Join(s.WebDir, "index.html"))
 	})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

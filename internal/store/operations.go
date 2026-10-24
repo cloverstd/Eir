@@ -237,7 +237,7 @@ func (s *Store) FullReset(ctx context.Context, id string) (string, error) {
 	if _, e = tx.Exec(ctx, "INSERT INTO collector_tombstones(id,binding_id,enrollment_nonce,config_version) SELECT id,binding_id,enrollment_nonce,config_version FROM collectors ON CONFLICT(id) DO UPDATE SET binding_id=EXCLUDED.binding_id,enrollment_nonce=EXCLUDED.enrollment_nonce,config_version=greatest(collector_tombstones.config_version,EXCLUDED.config_version),deleted_at=now()"); e != nil {
 		return "", e
 	}
-	for _, q := range []string{"INSERT INTO document_garbage(id) SELECT id FROM medical_documents ON CONFLICT DO NOTHING", "DELETE FROM medical_documents", "DELETE FROM health_history", "DELETE FROM ota_jobs", "DELETE FROM commands", "DELETE FROM device_baselines", "DELETE FROM bindings", "DELETE FROM devices", "DELETE FROM collectors", "DELETE FROM collector_candidates", "DELETE FROM members", "UPDATE system_state SET data_epoch=gen_random_uuid(),revision=revision+1"} {
+	for _, q := range []string{"INSERT INTO document_garbage(id) SELECT id FROM medical_documents ON CONFLICT DO NOTHING", "DELETE FROM medical_documents", "DELETE FROM health_history", "DELETE FROM ota_jobs", "DELETE FROM commands", "DELETE FROM device_baselines", "DELETE FROM bindings", "DELETE FROM devices", "DELETE FROM collectors", "DELETE FROM collector_candidates", "DELETE FROM push_subscriptions", "DELETE FROM members", "UPDATE system_state SET data_epoch=gen_random_uuid(),revision=revision+1"} {
 		if _, e = tx.Exec(ctx, q); e != nil {
 			return "", e
 		}

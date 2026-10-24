@@ -26,7 +26,13 @@ var signalsSchema string
 //go:embed device_numbers.sql
 var deviceNumbersSchema string
 
-type Store struct{ DB *pgxpool.Pool }
+//go:embed push.sql
+var pushSchema string
+
+type Store struct {
+	DB          *pgxpool.Pool
+	PushEnabled bool
+}
 
 func Open(ctx context.Context, url string) (*Store, error) {
 	config, e := pgxpool.ParseConfig(url)
@@ -40,7 +46,7 @@ func Open(ctx context.Context, url string) (*Store, error) {
 	if e != nil {
 		return nil, e
 	}
-	return &Store{p}, nil
+	return &Store{DB: p}, nil
 }
 func (s *Store) Migrate(ctx context.Context) error {
 	c, e := s.DB.Acquire(ctx)
@@ -73,6 +79,9 @@ func (s *Store) Migrate(ctx context.Context) error {
 		return e
 	}
 	if _, e = tx.Exec(ctx, deviceNumbersSchema); e != nil {
+		return e
+	}
+	if _, e = tx.Exec(ctx, pushSchema); e != nil {
 		return e
 	}
 	return tx.Commit(ctx)

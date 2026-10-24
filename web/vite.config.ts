@@ -1,13 +1,54 @@
 import { defineConfig, loadEnv } from "vite";
+import { VitePWA } from "vite-plugin-pwa";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
-import {fileURLToPath, URL} from "node:url";
+import { fileURLToPath, URL } from "node:url";
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, ".", "");
   const target = env.EIR_DEV_API || "http://localhost:8080";
   return {
-    plugins: [react(), tailwindcss()],
-    resolve: {alias: {"@": fileURLToPath(new URL("./src", import.meta.url))}},
+    plugins: [
+      react(),
+      tailwindcss(),
+      VitePWA({
+        strategies: "injectManifest",
+        srcDir: "src",
+        filename: "sw.ts",
+        registerType: "prompt",
+        injectRegister: false,
+        manifest: {
+          id: "/",
+          name: "Eir · 家庭健康",
+          short_name: "Eir",
+          start_url: "/",
+          scope: "/",
+          display: "standalone",
+          theme_color: "#0c6657",
+          background_color: "#ffffff",
+          icons: [
+            {
+              src: "/icon-192.png",
+              sizes: "192x192",
+              type: "image/png",
+              purpose: "any",
+            },
+            {
+              src: "/icon-512.png",
+              sizes: "512x512",
+              type: "image/png",
+              purpose: "any maskable",
+            },
+          ],
+        },
+        injectManifest: {
+          globPatterns: ["**/*.{js,css,html,png,svg,webmanifest}"],
+          maximumFileSizeToCacheInBytes: 5000000,
+        },
+      }),
+    ],
+    resolve: {
+      alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
+    },
     server: {
       proxy: {
         "/api": {

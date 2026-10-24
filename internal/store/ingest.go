@@ -182,6 +182,7 @@ func (s *Store) Ingest(ctx context.Context, collector string, payload []byte) (A
 	}
 	fingerprint := omron.Fingerprint(in.DeviceID, in.UserSlot, record)
 	e = tx.QueryRow(ctx, `INSERT INTO measurements(fingerprint,device_id,collector_id,user_slot,record_sequence,device_time,measured_at,timezone,member_id,raw_data,parser_version,raw_flags,source_collector_id,source_device_name) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$3,(SELECT name FROM devices WHERE id=$2)) ON CONFLICT(fingerprint) DO NOTHING RETURNING id::text`, fingerprint, in.DeviceID, collector, in.UserSlot, record.Sequence, record.DeviceTime, record.Time, zone, member, record.Raw, omron.ParserVersion, int64(record.Flags)).Scan(&measurementID)
+	fresh := e == nil
 	if errors.Is(e, pgx.ErrNoRows) {
 		e = tx.QueryRow(ctx, "SELECT id::text FROM measurements WHERE fingerprint=$1", fingerprint).Scan(&measurementID)
 	}
@@ -193,6 +194,11 @@ func (s *Store) Ingest(ctx context.Context, collector string, payload []byte) (A
 	}
 	if _, e = tx.Exec(ctx, "INSERT INTO receipts(collector_id,message_id,payload_hash,status,measurement_id,binding_id,data_epoch) VALUES($1,$2,$3,'stored',$4,$5,$6)", collector, in.MessageID, hash, measurementID, in.BindingID, in.DataEpoch); e != nil {
 		return ack, e
+	}
+	if fresh && s.PushEnabled {
+		if e = enqueuePush(ctx, tx, *measurementID); e != nil {
+			return ack, e
+		}
 	}
 	ack.Status = "stored"
 	ack.MeasurementID = measurementID

@@ -1,6 +1,8 @@
-import { useCallback, useState } from "react";
+import { PushSettings, FocusMeasurement } from "./push";
+import { OfflineControls, OfflinePage } from "./offline";
+import { useCallback, useState, useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, Link, useLocation } from "react-router";
+import { BrowserRouter, Link, useLocation, useNavigate } from "react-router";
 import {
   Activity,
   Heart,
@@ -52,6 +54,7 @@ import { TooltipProvider } from "./components/ui/tooltip";
 import "./style.css";
 
 const pages = [
+ {id:"offline",label:"离线数据",icon:Heart,description:"查看本机保存的最近 90 天健康指标"},
   {
     id: "overview",
     label: "家庭概览",
@@ -208,6 +211,13 @@ function App() {
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
   const members = useAPI<Row[]>("members", [], revision);
+  const navigate = useNavigate();
+  const initialConnection = useRef(true);
+  useEffect(() => {
+    if (!initialConnection.current || members.loading) return;
+    initialConnection.current = false;
+    if (members.error && page !== "offline") navigate("/offline" + location.search, {replace:true});
+  }, [members.loading, members.error, navigate, page, location.search]);
   const devices = useAPI<Row[]>(
     ["data", "body"].includes(page) ? "devices" : null,
     [],
@@ -250,7 +260,7 @@ function App() {
             <span
               className={`size-1.5 rounded-full ${status === "connected" ? "bg-emerald-500" : "bg-amber-500"}`}
             />
-            {status === "connected"
+            {page === "offline" ? "本机数据" : status === "connected"
               ? "实时同步"
               : status === "connecting"
                 ? "连接中"
@@ -268,7 +278,7 @@ function App() {
               </p>
             )}
           </div>
-          {(error || members.error || devices.error) && (
+          {page !== "offline" && (error || members.error || devices.error) && (
             <Alert variant="destructive">
               <AlertDescription className="flex items-start justify-between gap-3">
                 <span>{error || members.error || devices.error}</span>
@@ -298,6 +308,11 @@ function App() {
               </AlertDescription>
             </Alert>
           )}
+          <FocusMeasurement />
+          {page === "offline" && <OfflinePage />}
+          <OfflineControls settings={page === "settings"} />
+          {page === "settings" && <PushSettings members={members.data}/>}
+          {page !== "offline" && members.error && <Link to="/offline">无法连接服务，查看本机离线数据</Link>}
           {members.loading && !members.loaded ? (
             <div className="space-y-4">
               <Skeleton className="h-10 w-60" />

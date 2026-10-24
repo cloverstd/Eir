@@ -24,6 +24,13 @@ func measurementFilters(r *http.Request, defaultKind bool) (string, []any, error
 		return "", nil, fmt.Errorf("unsupported measurement kind")
 	}
 	args := []any{}
+	if id := q.Get("measurement_id"); id != "" {
+		if !store.UUIDPattern.MatchString(id) {
+			return "", nil, fmt.Errorf("invalid measurement ID")
+		}
+		args = append(args, id)
+		clauses = append(clauses, "id="+store.Placeholder(len(args)))
+	}
 	for _, key := range []string{"member_id", "device_id", "kind"} {
 		if v := q.Get(key); v != "" {
 			if key != "kind" && !store.UUIDPattern.MatchString(v) {

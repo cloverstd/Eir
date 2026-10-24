@@ -98,6 +98,11 @@ func (s *Store) ingestBody(ctx context.Context, tx pgx.Tx, collector string, in 
 	if _, e = tx.Exec(ctx, "INSERT INTO receipts(collector_id,message_id,payload_hash,status,measurement_id,binding_id,data_epoch) VALUES($1,$2,$3,'stored',$4,$5,$6)", collector, in.MessageID, payloadHash, id, in.BindingID, in.DataEpoch); e != nil {
 		return ack, e
 	}
+	if fresh && s.PushEnabled {
+		if e = enqueuePush(ctx, tx, id); e != nil {
+			return ack, e
+		}
+	}
 	ack.Status = "stored"
 	ack.MeasurementID = &id
 	return ack, tx.Commit(ctx)

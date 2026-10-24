@@ -123,3 +123,11 @@
 - 已检查 390×844 和 1440×1000 截图，无横向溢出或脚本错误：[桌面全员概览](images/waist-overview-1440.png)、[手机成员概览](images/waist-member-390.png)、[手机腰围录入](images/waist-record-390.png)。所有截图和测试记录均为合成数据。
 
 本次无数据库迁移、公开 API 或 MCP 契约变更；未部署到生产，也未修改固件或操作真实设备。
+
+## 2026-10-24 PWA / 离线 / Web Push（软件验证）
+
+- 前端生产构建生成 manifest、Service Worker、192/512 PNG 及 Apple Touch Icon；现有 34 项前端测试通过。
+- Go 全套 `go test -race ./...`、`go vet ./...` 和现有 Python 测试通过。
+- 独立 `eir_test_pwa` PostgreSQL 17 测试验证新增迁移、快照 90 天边界和隐私字段排除；队列唯一约束、体重 10 秒延迟、删除测量级联清理、成员取消关注、发送重试、过期任务和订阅清理，以及订阅管理令牌隔离。
+- `scripts/pwa_ui_test.cjs` 使用合成数据和真实生产构建，在 Chromium 390×844 验证主屏幕所需资源、Service Worker 注册、本机完整快照、断网刷新、清除本机数据、API 缓存排除及无横向溢出。截图见 [PWA 离线页面](images/pwa-offline-390.png)。浏览器测试不访问生产 API 或真实推送服务。
+- 未配置生产 VAPID、未部署 Home、未更新 ESP32。真实 iPhone 的添加主屏幕、权限弹窗、锁屏收到测试/设备测量通知、通知点击跳转、专注模式以及关闭推送仍待上线后人工验收。模拟推送 HTTP 返回值不等同于 Apple 实际投递成功。

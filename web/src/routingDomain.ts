@@ -1,5 +1,6 @@
 export const pagePaths: Record<string, string> = {
   overview: "/",
+  offline: "/offline",
   data: "/data",
   body: "/body",
   devices: "/devices",

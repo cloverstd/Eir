@@ -954,6 +954,15 @@
               "maximum": 200,
               "default": 50
             }
+          },
+          {
+            "in": "query",
+            "name": "measurement_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "通知定位单条测量，可与 member_id 联用"
           }
         ]
       }
@@ -3761,6 +3770,243 @@
             ]
           }
         }
+      }
+    },
+    "/offline/snapshot": {
+      "get": {
+        "summary": "全家最近 90 天离线指标快照",
+        "responses": {
+          "200": {
+            "description": "一致性快照，含 instance_id、data_epoch、synced_at、window_start、members 和 observations；不含医疗文件或诊断原始数据"
+          }
+        }
+      }
+    },
+    "/push/config": {
+      "get": {
+        "summary": "读取推送配置或本机订阅",
+        "responses": {
+          "200": {
+            "description": "操作成功"
+          },
+          "400": {
+            "description": "无效订阅或成员"
+          },
+          "404": {
+            "description": "订阅或管理令牌无效"
+          }
+        }
+      }
+    },
+    "/push/subscriptions": {
+      "post": {
+        "summary": "创建订阅或发送本机测试通知",
+        "responses": {
+          "201": {
+            "description": "操作成功"
+          },
+          "400": {
+            "description": "无效订阅或成员"
+          },
+          "404": {
+            "description": "订阅或管理令牌无效"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "member_ids",
+                  "subscription"
+                ],
+                "properties": {
+                  "member_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "minItems": 1
+                  },
+                  "subscription": {
+                    "type": "object",
+                    "description": "PushSubscription JSON: endpoint and keys (p256dh, auth)"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/push/subscriptions/{id}": {
+      "get": {
+        "summary": "读取推送配置或本机订阅",
+        "responses": {
+          "200": {
+            "description": "操作成功"
+          },
+          "400": {
+            "description": "无效订阅或成员"
+          },
+          "404": {
+            "description": "订阅或管理令牌无效"
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Bearer <subscription management token>"
+          }
+        ]
+      },
+      "patch": {
+        "summary": "更新关注成员",
+        "responses": {
+          "204": {
+            "description": "操作成功"
+          },
+          "400": {
+            "description": "无效订阅或成员"
+          },
+          "404": {
+            "description": "订阅或管理令牌无效"
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Bearer <subscription management token>"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "member_ids"
+                ],
+                "properties": {
+                  "member_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "minItems": 1
+                  },
+                  "subscription": {
+                    "type": "object",
+                    "description": "PushSubscription JSON: endpoint and keys (p256dh, auth)"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "取消本机订阅",
+        "responses": {
+          "204": {
+            "description": "操作成功"
+          },
+          "400": {
+            "description": "无效订阅或成员"
+          },
+          "404": {
+            "description": "订阅或管理令牌无效"
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Bearer <subscription management token>"
+          }
+        ]
+      }
+    },
+    "/push/subscriptions/{id}/test": {
+      "post": {
+        "summary": "创建订阅或发送本机测试通知",
+        "responses": {
+          "204": {
+            "description": "操作成功"
+          },
+          "400": {
+            "description": "无效订阅或成员"
+          },
+          "404": {
+            "description": "订阅或管理令牌无效"
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Bearer <subscription management token>"
+          }
+        ]
       }
     }
   },

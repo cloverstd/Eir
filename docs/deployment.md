@@ -62,3 +62,24 @@ docker compose -f compose.external.yaml up -d --build --wait
 GitHub Actions 对 PR 和主分支运行测试、隔离集成和固件构建。主分支镜像标签为 `main` 和 `sha-<commit>`；`vX.Y.Z` 发布应用版本，稳定版更新 `latest`。`firmware-vX.Y.Z` 发布固件，标签必须与工程内嵌版本一致。固件及应用分别发布，自动化只生成产物，升级由运维人员发起。
 
 需要可重现更新时使用具体提交标签或镜像 digest。数据库升级后回退程序不代表完成数据回滚，应结合备份恢复。
+
+## iPhone PWA、离线保存与 Web Push
+
+用具有受信任证书的 HTTPS 地址访问，在 Safari 分享菜单选择“添加到主屏幕”。从桌面图标启动后，在系统管理开启通知并选择关注成员。iOS 16.4 或更新版本支持标准 Web Push，无需 Apple 开发者账号。每台设备分别授权；系统设置中的通知权限或专注模式会影响展示。
+
+推送默认关闭。执行 `eir push-keygen` 一次，将输出安全保存到私有 `.env`（0600），不要提交密钥或在日志中记录。配置：
+
+```dotenv
+EIR_PUSH_ENABLED=true
+EIR_PUSH_VAPID_PUBLIC_KEY=<generated public key>
+EIR_PUSH_VAPID_PRIVATE_KEY=<generated private key>
+EIR_PUSH_VAPID_SUBJECT=mailto:operator@example.com
+```
+
+复用现有 HTTPS 代理及 Eir 容器，不需要新增入站端口。服务器需要出站访问浏览器推送服务；允许 Apple `*.push.apple.com`、FCM `fcm.googleapis.com`、Firefox `updates.push.services.mozilla.com`。VAPID 密钥必须跨重启保持不变，换密钥后设备需要重新订阅。通知内容通过标准 Web Push 加密传递，但锁屏会显示姓名、读数及测量时间。
+
+只有首次入库且已有成员归属的设备测量进入持久队列，体重等待 10 秒合并体脂结果。手工录入、重复数据、后续归属修改不推送。首次入库的历史补传也会通知，保留实际测量时间。失败最长重试 24 小时，过期订阅自动删除。推送并非紧急告警服务；点开最新详情仍需手机能访问家中 Eir。
+
+系统管理可选择在本机保存全家最近 90 天的指标快照。离线查看不包含医疗文件、病史、诊断原始数据，不支持离线录入。打开应用、回到前台和数据变化时同步；同步失败保留完整旧快照。关闭保存会清除本机健康快照，不影响推送订阅。系统重置后的新数据代次会随下一次成功同步替换旧快照；未联网的设备仍只能展示最后同步的数据。浏览器可能回收存储，离线保存不代替服务器备份。
+
+更新时保留根路径 `/sw.js` 和 manifest 的正确 MIME 类型和重新验证缓存策略，不能将 API/SSE 缓存为页面。发现更新后由用户点击刷新，不自动重载录入中的页面。
