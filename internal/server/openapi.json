@@ -3777,7 +3777,7 @@
         "summary": "全家最近 90 天离线指标快照",
         "responses": {
           "200": {
-            "description": "一致性快照，含 instance_id、data_epoch、synced_at、window_start、members 和 observations；不含医疗文件或诊断原始数据"
+            "description": "一致性快照：instance_id、data_epoch、synced_at、window_start、members（完整成员资料）、measurements（最近90天设备读数）、observations（最近90天指标）、history、documents（仅元数据）、metrics 和 resources（设备、采集器、绑定、操作、事件、固件、最新信号）。排除文件原件、文件文本、原始测量字节及阻抗原始数据。"
           }
         }
       }

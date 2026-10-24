@@ -1,3 +1,4 @@
+import { isOffline } from "./api";
 import { DateField, DateRangePicker } from "./components/DatePicker";
 import { ConfirmAction } from "./lifecycle";
 import { Button } from "./components/ui/button";
@@ -1190,6 +1191,10 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
                 <div className="flex flex-wrap items-start gap-2">
                   <Button
                     onClick={() => {
+                      if (isOffline()) {
+                        setError("医疗文件原件未缓存在本机，请联网后预览");
+                        return;
+                      }
                       setPreview(d);
                       setPreviewPage(1);
                       setText("");
@@ -1199,7 +1204,17 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
                     预览文件
                   </Button>
                   <Button asChild variant="outline">
-                    <a href={`/api/v1/documents/${d.id}/download`}>下载原件</a>
+                    <a
+                      onClick={(e) => {
+                        if (isOffline()) {
+                          e.preventDefault();
+                          setError("医疗文件原件需要联网下载");
+                        }
+                      }}
+                      href={`/api/v1/documents/${d.id}/download`}
+                    >
+                      下载原件
+                    </a>
                   </Button>
                   <Button onClick={() => setEditDocument(d)} variant="outline">
                     编辑文件信息

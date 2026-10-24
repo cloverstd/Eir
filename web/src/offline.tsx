@@ -2,67 +2,21 @@ import { useEffect, useState } from "react";
 import { TimeSeriesChart } from "./components/TimeSeriesChart";
 import { Link, useLocation } from "react-router";
 import { registerSW } from "virtual:pwa-register";
-import { api, date } from "./api";
+import { api, date, networkRead, isOffline, connectionState } from "./api";
 import type { Row } from "./api";
 import { metricNames } from "./healthDomain";
 import { Button } from "./components/ui/button";
 import { useRealtime } from "./realtime";
 
-type Snapshot = {
-  instance_id: string;
-  data_epoch: string;
-  synced_at: string;
-  window_start: string;
-  members: Row[];
-  observations: Row[];
-};
-function offlineEnabled() {
-  try {
-    return localStorage.getItem("eir-offline-enabled") === "true";
-  } catch {
-    return false;
-  }
-}
-async function storage(value?: Snapshot | null): Promise<Snapshot | null> {
-  return new Promise((resolve, reject) => {
-    const open = indexedDB.open("eir-offline", 1);
-    open.onupgradeneeded = () => open.result.createObjectStore("snapshot");
-    open.onerror = () => reject(open.error);
-    open.onsuccess = () => {
-      const db = open.result;
-      if (value && !offlineEnabled()) {
-        db.close();
-        resolve(null);
-        return;
-      }
-      const tx = db.transaction(
-        "snapshot",
-        value === undefined ? "readonly" : "readwrite",
-      );
-      const store = tx.objectStore("snapshot");
-      const req =
-        value === undefined
-          ? store.get("current")
-          : value === null
-            ? store.delete("current")
-            : store.put(value, "current");
-      let result: Snapshot | null = null;
-      req.onsuccess = () => {
-        result = value === undefined ? (req.result ?? null) : value;
-      };
-      tx.oncomplete = () => {
-        db.close();
-        resolve(result);
-        if (value !== undefined)
-          window.dispatchEvent(new Event("eir-offline-updated"));
-      };
-      tx.onabort = () => {
-        db.close();
-        reject(tx.error);
-      };
-    };
-  });
-}
+import {
+  offlineEnabled,
+  readSnapshot,
+  saveSnapshot,
+  cacheRead,
+  cachedPaths,
+} from "./offlineData";
+import type { Snapshot } from "./offlineData";
+const storage = readSnapshot;
 export function OfflineControls({ settings }: { settings: boolean }) {
   const [enabled, setEnabled] = useState(() => offlineEnabled());
   const [message, setMessage] = useState("");
@@ -92,8 +46,16 @@ export function OfflineControls({ settings }: { settings: boolean }) {
     });
     // Long-lived home-screen apps also check after returning to the foreground.
     const check = () => {
-      if (!navigator.onLine || document.visibilityState === "hidden" || !("serviceWorker" in navigator)) return;
-      void navigator.serviceWorker.getRegistration().then(registration => registration?.update()).catch(() => {});
+      if (
+        !navigator.onLine ||
+        document.visibilityState === "hidden" ||
+        !("serviceWorker" in navigator)
+      )
+        return;
+      void navigator.serviceWorker
+        .getRegistration()
+        .then((registration) => registration?.update())
+        .catch(() => {});
     };
     window.addEventListener("online", check);
     document.addEventListener("visibilitychange", check);
@@ -105,43 +67,126 @@ export function OfflineControls({ settings }: { settings: boolean }) {
     };
   }, []);
   useEffect(() => {
-    if (!enabled) return;
-    let alive = true;
+    let stopped = false,
+      inflight = false,
+      pending = false;
     const controller = new AbortController();
-    const timer = setTimeout(() => {
-      void api("offline/snapshot", "GET", undefined, controller.signal)
-        .then(async (value) => {
-          if (!alive) return;
-          if (!offlineEnabled()) return;
-          await storage(value);
-          if (alive) setMessage("最近同步：" + date(value.synced_at));
-        })
-        .catch(() => {
-          if (alive) setMessage("同步失败或本机存储不可用，保留上次完整数据");
-        });
-    }, 1000);
-    return () => {
-      alive = false;
-      controller.abort();
-      clearTimeout(timer);
+    const sync = async () => {
+      if (document.visibilityState === "hidden" || stopped) return;
+      if (inflight) {
+        pending = true;
+        return;
+      }
+      inflight = true;
+      try {
+        if (!enabled) {
+          await networkRead("members", controller.signal);
+          connectionState(false);
+          return;
+        }
+        const snapshot = await networkRead(
+          "offline/snapshot",
+          controller.signal,
+        );
+        if (stopped || !offlineEnabled()) return;
+        const previous = await readSnapshot();
+        const changed =
+          previous &&
+          (previous.instance_id !== snapshot.instance_id ||
+            previous.data_epoch !== snapshot.data_epoch);
+        const paths = changed ? [] : await cachedPaths();
+        await saveSnapshot(snapshot);
+        setMessage("最近同步：" + date(snapshot.synced_at));
+        for (const path of paths) {
+          if (stopped) break;
+          try {
+            const value = await networkRead(path, controller.signal);
+            if (!stopped) await cacheRead(path, value);
+          } catch {
+            /* Keep explicit unavailable state on next read. */
+          }
+        }
+      } catch {
+        if (!stopped) setMessage("同步失败，保留上次完整本机数据");
+      } finally {
+        inflight = false;
+        if (pending && !stopped) {
+          pending = false;
+          void sync();
+        }
+      }
     };
-  }, [enabled, version, refreshTick]);
+    const trigger = () => void sync();
+    const disconnected = () => connectionState(true);
+    window.addEventListener("offline", disconnected);
+    const first = setTimeout(trigger, 500),
+      timer = setInterval(trigger, 5 * 60 * 1000);
+    window.addEventListener("eir-offline-sync-request", trigger);
+    window.addEventListener("online", trigger);
+    window.addEventListener("eir-data-written", trigger);
+    document.addEventListener("visibilitychange", trigger);
+    return () => {
+      window.removeEventListener("offline", disconnected);
+      stopped = true;
+      controller.abort();
+      clearTimeout(first);
+      clearInterval(timer);
+      window.removeEventListener("eir-offline-sync-request", trigger);
+      window.removeEventListener("online", trigger);
+      window.removeEventListener("eir-data-written", trigger);
+      document.removeEventListener("visibilitychange", trigger);
+    };
+  }, [enabled]);
+  useEffect(() => {
+    window.dispatchEvent(new Event("eir-offline-sync-request"));
+  }, [version, refreshTick]);
+  const [offline, setOffline] = useState(isOffline());
+  const [lastSync, setLastSync] = useState("");
+  useEffect(() => {
+    const update = () => {
+      setOffline(isOffline());
+      void readSnapshot()
+        .then((s) => setLastSync(s?.synced_at || ""))
+        .catch(() => {});
+    };
+    update();
+    window.addEventListener("eir-connection-changed", update);
+    window.addEventListener("eir-offline-updated", update);
+    return () => {
+      window.removeEventListener("eir-connection-changed", update);
+      window.removeEventListener("eir-offline-updated", update);
+    };
+  }, []);
   const change = async () => {
     const next = !enabled;
     localStorage.setItem("eir-offline-enabled", String(next));
     setEnabled(next);
     if (!next) {
-      await storage(null);
+      await saveSnapshot(null);
       setMessage("本机离线数据已清除");
     }
   };
   return (
     <>
+      {offline && (
+        <div
+          role="status"
+          className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"
+        >
+          正在查看本机数据 ·{" "}
+          {lastSync ? "最后同步 " + date(lastSync) : "尚未完成同步"}
+          。测量数据限最近 90 天；新增、编辑和设备控制需联网。
+          <Button variant="ghost" onClick={() => setRefreshTick((v) => v + 1)}>
+            重试连接
+          </Button>
+        </div>
+      )}
       <div hidden={!settings} className="rounded-xl border p-4 space-y-3">
         <p>iPhone：在 Safari 分享菜单中选择“添加到主屏幕”。</p>
         <p>
           离线保存全家最近 90
-          天的指标，不保存医疗文件。设备上的其他使用者也能查看。
+          天的指标，以及成员资料和已查看的数据列表。应用打开时每 5
+          分钟自动同步，回到前台或恢复网络时立即检查。不保存医疗文件原件；设备上的其他使用者也能查看。
         </p>
         <Button
           onClick={() =>

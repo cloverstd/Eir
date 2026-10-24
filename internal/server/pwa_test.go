@@ -58,8 +58,13 @@ func TestOfflineSnapshotIntegration(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
-	if strings.Contains(w.Body.String(), "private") {
-		t.Fatal("private fields leaked")
+	if !strings.Contains(w.Body.String(), "private notes") {
+		t.Fatal("member profile not included in offline snapshot")
+	}
+	for _, key := range []string{`"raw_hex"`, `"impedance_raw"`, `"raw_adcs"`, `"file_path"`} {
+		if strings.Contains(w.Body.String(), key) {
+			t.Fatalf("raw or file contents leaked: %s", key)
+		}
 	}
 	var result struct {
 		Observations []struct {
@@ -193,4 +198,15 @@ func TestPushQueueIntegration(t *testing.T) {
 	request("DELETE", handle["token"], "", 204)
 	request("GET", handle["token"], "", 404)
 
+}
+
+func TestOfflineSanitizesNestedDiagnostics(t *testing.T) {
+	value := map[string]any{"notes": "keep profile notes", "resources": map[string]any{"events": json.RawMessage(`[{"type":"measurement","data":{"raw_hex":"secret-packet","value":82},"payload":"secret-body"}]`)}}
+	encoded, err := json.Marshal(sanitizeOffline(value))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "secret") || !strings.Contains(string(encoded), "keep profile notes") || !strings.Contains(string(encoded), `"value":82`) {
+		t.Fatal(string(encoded))
+	}
 }

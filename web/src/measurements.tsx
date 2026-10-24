@@ -10,7 +10,8 @@ import {
   RotateCcw,
   Ruler,
 } from "lucide-react";
-import { api, date, number } from "./api";
+import { exportLocalMeasurements } from "./offlineData";
+import { api, date, number, isOffline } from "./api";
 import type { Row } from "./api";
 import { useResource } from "./realtime";
 import { useQueryState } from "./routing";
@@ -101,7 +102,12 @@ const icons = {
   pulse: Activity,
   waist: Ruler,
 };
-const deviceMetrics: Metric[] = ["weight", "body_fat", "blood_pressure", "pulse"];
+const deviceMetrics: Metric[] = [
+  "weight",
+  "body_fat",
+  "blood_pressure",
+  "pulse",
+];
 const allMetrics: Metric[] = [...deviceMetrics, "waist"];
 function LatestCards({
   items,
@@ -187,13 +193,14 @@ function MetricPlot({
   error?: string;
 }) {
   const series = useMemo(
-    () => familyMembers
-      ? familyMetricSeries(rows, metric, familyMembers)
-      : metricSeries(rows, metric),
+    () =>
+      familyMembers
+        ? familyMetricSeries(rows, metric, familyMembers)
+        : metricSeries(rows, metric),
     [rows, metric, familyMembers],
   );
   const reference = useMemo(
-    () => familyMembers ? undefined : referenceFor(metric, member),
+    () => (familyMembers ? undefined : referenceFor(metric, member)),
     [metric, member, familyMembers],
   );
   const referenceHint = (
@@ -233,7 +240,9 @@ function MetricPlot({
     </>
   );
   return (
-    <Card className={`min-w-0 gap-2 py-5 shadow-none ${metric === "waist" ? "xl:col-span-2" : ""}`}>
+    <Card
+      className={`min-w-0 gap-2 py-5 shadow-none ${metric === "waist" ? "xl:col-span-2" : ""}`}
+    >
       <CardHeader className="flex flex-row items-center justify-between gap-2 px-5">
         <div className="space-y-1.5">
           <CardTitle className="text-sm font-medium">
@@ -359,13 +368,23 @@ export function MeasurementsPage({
     [],
     revision,
   );
-  const waistQuery = healthQuery(member, "waist", 1, from, to, "day", "", period, now);
+  const waistQuery = healthQuery(
+    member,
+    "waist",
+    1,
+    from,
+    to,
+    "day",
+    "",
+    period,
+    now,
+  );
   const waistCurves = useResource<Row[]>(
     overview ? "waist-series:" + waistQuery : null,
-    (signal) => loadObservationSeries(
-      waistQuery,
-      (path) => api(path, "GET", undefined, signal),
-    ),
+    (signal) =>
+      loadObservationSeries(waistQuery, (path) =>
+        api(path, "GET", undefined, signal),
+      ),
     [],
     revision,
   );
@@ -378,7 +397,10 @@ export function MeasurementsPage({
     overview && member ? "waist-latest:" + waistLatestQuery : null,
     async (signal) => {
       const result = await api(
-        "health/observations?" + waistLatestQuery, "GET", undefined, signal,
+        "health/observations?" + waistLatestQuery,
+        "GET",
+        undefined,
+        signal,
       );
       return result.items.map((row: Row) => ({ ...row, metric: "waist" }));
     },
@@ -415,8 +437,12 @@ export function MeasurementsPage({
       ? ["weight", "body_fat"]
       : ["blood_pressure", "pulse"];
   const memberIDs = new Set(members.map((m) => m.id));
-  const plotRows = overview ? curves.data.concat(waistCurves.data) : curves.data;
-  const latestRows = overview ? latest.data.concat(waistLatest.data) : latest.data;
+  const plotRows = overview
+    ? curves.data.concat(waistCurves.data)
+    : curves.data;
+  const latestRows = overview
+    ? latest.data.concat(waistLatest.data)
+    : latest.data;
   const loadingMetrics: Metric[] = [
     ...(!latest.loaded && latest.loading ? deviceMetrics : []),
     ...(!waistLatest.loaded && waistLatest.loading ? ["waist" as const] : []),
@@ -425,7 +451,8 @@ export function MeasurementsPage({
     ...(latest.error ? deviceMetrics : []),
     ...(waistLatest.error ? ["waist" as const] : []),
   ];
-  const curveResource = (metric: Metric) => metric === "waist" ? waistCurves : curves;
+  const curveResource = (metric: Metric) =>
+    metric === "waist" ? waistCurves : curves;
   const times = plotRows
     .filter((row) => !familyOverview || memberIDs.has(row.member_id))
     .map((row) => Date.parse(row.measured_at));
@@ -434,7 +461,12 @@ export function MeasurementsPage({
   const domain = Number.isFinite(min)
     ? { from: min, to: max > min ? max : min + 60000 }
     : undefined;
-  const error = latest.error || curves.error || table.error || waistCurves.error || waistLatest.error;
+  const error =
+    latest.error ||
+    curves.error ||
+    table.error ||
+    waistCurves.error ||
+    waistLatest.error;
   const datePicker = (
     <DateRangePicker
       period={range ? "custom" : period}
@@ -454,11 +486,17 @@ export function MeasurementsPage({
         <div className="flex flex-wrap items-center justify-end gap-2">
           {member && members.some((m) => m.id === member) && (
             <Button variant="outline" asChild>
-              <Link to={`/members/${member}/metrics?kind=waist`}>查看腰围历史</Link>
+              <Link to={`/members/${member}/metrics?kind=waist`}>
+                查看腰围历史
+              </Link>
             </Button>
           )}
-          <Button disabled={busy || !members.length} onClick={() => setRecordingWaist(true)}>
-            <Ruler className="size-4" />记录腰围
+          <Button
+            disabled={busy || !members.length}
+            onClick={() => setRecordingWaist(true)}
+          >
+            <Ruler className="size-4" />
+            记录腰围
           </Button>
         </div>
       )}
@@ -639,8 +677,12 @@ export function MeasurementsPage({
       ) : familyOverview ? (
         <div className="grid min-w-0 gap-4 xl:grid-cols-2">
           {metrics.map((metric) =>
-            curveResource(metric).loading && !curveResource(metric).data.length ? (
-              <Skeleton key={metric} className={`h-96 ${metric === "waist" ? "xl:col-span-2" : ""}`} />
+            curveResource(metric).loading &&
+            !curveResource(metric).data.length ? (
+              <Skeleton
+                key={metric}
+                className={`h-96 ${metric === "waist" ? "xl:col-span-2" : ""}`}
+              />
             ) : (
               <MetricPlot
                 key={metric}
@@ -683,8 +725,12 @@ export function MeasurementsPage({
             />
             <div className="grid min-w-0 gap-4 xl:grid-cols-2">
               {metrics.map((metric) =>
-                curveResource(metric).loading && !curveResource(metric).data.length ? (
-                  <Skeleton key={metric} className={`h-96 ${metric === "waist" ? "xl:col-span-2" : ""}`} />
+                curveResource(metric).loading &&
+                !curveResource(metric).data.length ? (
+                  <Skeleton
+                    key={metric}
+                    className={`h-96 ${metric === "waist" ? "xl:col-span-2" : ""}`}
+                  />
                 ) : (
                   <MetricPlot
                     key={metric}
@@ -716,7 +762,18 @@ export function MeasurementsPage({
               </CardDescription>
             </div>
             <Button variant="outline" size="sm" asChild>
-              <a href={"/api/v1/measurements/export.csv?" + tableQuery}>
+              <a
+                onClick={(e) => {
+                  if (isOffline()) {
+                    e.preventDefault();
+                    void action(
+                      () => exportLocalMeasurements(tableQuery.toString()),
+                      "已导出本机缓存数据",
+                    );
+                  }
+                }}
+                href={"/api/v1/measurements/export.csv?" + tableQuery}
+              >
                 <ArrowDownToLine className="size-4" />
                 导出 CSV
               </a>
@@ -877,7 +934,10 @@ export function MeasurementsPage({
               {body && (
                 <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-xs">
                   <dt className="text-muted-foreground">原始 ADC</dt>
-                  <dd>{editing.raw_adcs?.join(" / ") || "未取得"}</dd>
+                  <dd>
+                    {editing.raw_adcs?.join(" / ") ||
+                      (isOffline() ? "原始诊断数据未离线保存" : "未取得")}
+                  </dd>
                   <dt className="text-muted-foreground">估算算法</dt>
                   <dd>{editing.algorithm_version || "未计算"}</dd>
                   <dt className="text-muted-foreground">资料快照</dt>

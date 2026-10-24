@@ -136,6 +136,15 @@ export function useResource<T>(
     )
       refresh.current?.();
   }, [key, version, revision]);
+  useEffect(() => {
+    const update = () => refresh.current?.();
+    window.addEventListener("eir-offline-updated", update);
+    window.addEventListener("eir-connection-changed", update);
+    return () => {
+      window.removeEventListener("eir-offline-updated", update);
+      window.removeEventListener("eir-connection-changed", update);
+    };
+  }, []);
   return state.key === key
     ? state
     : { key, data: initial, error: "", loading: !!key, loaded: false };

@@ -77,6 +77,7 @@ const server = http.createServer((req, res) => {
     const context = await browser.newContext({
       viewport: { width: 390, height: 844 },
     });
+    await context.addInitScript(()=>{if(localStorage.getItem("eir-offline-enabled")===null)localStorage.setItem("eir-offline-enabled","false")});
     const page = await context.newPage();
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
