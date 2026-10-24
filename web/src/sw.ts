@@ -29,7 +29,7 @@ self.addEventListener("push", (event) => {
     self.registration.showNotification(payload.title || "Eir 健康通知", {
       body: payload.body || "有新的健康测量",
       tag: payload.tag || "eir-update",
-      icon: "/icon-192.png",
+      icon: "/icon-anime-v1-192.png",
       data: { url: payload.url || "/" },
     }),
   );

@@ -107,9 +107,11 @@ function Navigation({ page }: { page: string }) {
           <SidebarMenuItem>
             <SidebarMenuButton asChild size="lg">
               <Link to="/" onClick={() => setOpenMobile(false)}>
-                <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                  <Heart className="size-4" />
-                </span>
+                <img
+                  src="/icon-anime-v1-192.png"
+                  alt=""
+                  className="size-8 shrink-0 rounded-lg"
+                />
                 <span className="grid gap-0.5">
                   <strong className="text-base tracking-tight">Eir</strong>
                   <span className="text-xs text-muted-foreground">

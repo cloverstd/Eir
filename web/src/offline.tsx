@@ -90,6 +90,19 @@ export function OfflineControls({ settings }: { settings: boolean }) {
     setRefresh(() => () => {
       void reload(true);
     });
+    // Long-lived home-screen apps also check after returning to the foreground.
+    const check = () => {
+      if (!navigator.onLine || document.visibilityState === "hidden" || !("serviceWorker" in navigator)) return;
+      void navigator.serviceWorker.getRegistration().then(registration => registration?.update()).catch(() => {});
+    };
+    window.addEventListener("online", check);
+    document.addEventListener("visibilitychange", check);
+    const timer = setInterval(check, 60 * 60 * 1000);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("online", check);
+      document.removeEventListener("visibilitychange", check);
+    };
   }, []);
   useEffect(() => {
     if (!enabled) return;

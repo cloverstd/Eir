@@ -1,0 +1,11 @@
+Tool: built-in image_gen (reference edit / style transfer)
+Reference: previous Eir family pictogram app icon.
+Source artwork: eir-icon-anime-source.png
+Exports: web/public/icon-{32,180,192,512,1024}.png
+
+Use case: logo-brand / style-transfer.
+Asset type: production iPhone home-screen app icon for Eir, a family health tracking application.
+Image 1 is the existing icon to redesign. Remove the central child entirely. Replace the abstract pictograms with an original Japanese anime-style illustration of exactly TWO ADULT family members, a warm smiling adult woman and adult man, shoulder-to-shoulder. Both clearly adults, friendly expressive anime eyes, natural gentle smiles, no clown-like features, no painted noses. Clean polished contemporary slice-of-life anime cel shading, confident slightly thick outlines, simplified large shapes suitable at app-icon scale.
+Composition: square full-bleed icon artwork, no outer frame or pre-rounded corners, no presentation board. Two charming adult bust portraits form a compact balanced central emblem, surrounded by plenty of vivid blue background. A single small coral heart between their shoulders symbolizes family health, NOT a third person. Subtle mint health plus above the pair. Warm coral/orange and sunshine yellow clothing, bright blue background, warm natural skin tones. Energetic, optimistic, fresh, affectionate and healthy. Strong readable silhouette, uncluttered, minimal fine detail.
+Keep all heads, the heart, and essential illustration inside the central 75 percent of the square so circular and rounded-square app masks do not clip faces. Edge-to-edge blue background with tasteful smooth light variation. Crisp premium illustration, visually appealing at 48 pixels.
+Absolutely no children, no baby, no third face, no facial makeup, no red noses, no exaggerated toothy grins, no text, no letters, no watermark, no extra badges. Output one finished square icon.
