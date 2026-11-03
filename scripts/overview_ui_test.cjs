@@ -7,7 +7,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
-const root = path.resolve(__dirname, '../web/dist');
+const root = process.env.EIR_OVERVIEW_ROOT || path.resolve(__dirname, '../web/dist');
 const output = process.env.EIR_OVERVIEW_SCREENSHOTS || '/tmp/eir-overview-ui';
 fs.mkdirSync(output, { recursive: true });
 const members = ['成员甲', '成员乙', '成员丙', '无记录成员'].map((name, n) => ({
@@ -33,6 +33,8 @@ const streams = new Set();
 const observationQueries = [];
 const writes = [];
 let latestRequests = 0, waistLatestRequests = 0, failSave = false, failWaist = false, delayMember = '';
+let refreshGate = null, latestWeight = 64.2;
+const refreshReads = [];
 const changed = () => { for (const stream of streams) stream.write('event: change\ndata: {}\n\n'); };
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
@@ -45,6 +47,10 @@ const server = http.createServer(async (req, res) => {
     return;
   }
   if (url.pathname.startsWith('/api/')) {
+    if (refreshGate && req.method === 'GET') {
+      refreshReads.push(url);
+      await refreshGate;
+    }
     let body;
     const observationPath = url.pathname.match(/^\/api\/v1\/members\/([^/]+)\/observations(?:\/([^/]+))?$/);
     if (observationPath && req.method !== 'GET') {
@@ -53,7 +59,8 @@ const server = http.createServer(async (req, res) => {
       writes.push({ method: req.method, member: observationPath[1], input });
       await new Promise(resolve => setTimeout(resolve, 250));
       if (failSave) {
-        res.writeHead(503, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: '模拟保存失败，请重试' })); return;
+        // Keep explicit API errors separate from the 5xx offline-fallback tests.
+        res.writeHead(422, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: '模拟保存失败，请重试' })); return;
       }
       if (req.method === 'DELETE') {
         waistRows = waistRows.filter(row => row.id !== observationPath[2]);
@@ -76,7 +83,7 @@ const server = http.createServer(async (req, res) => {
         assert(!q.has('from') && !q.has('to'), 'latest waist is date-filtered');
       }
       if (failWaist) {
-        res.writeHead(503, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: '模拟腰围查询失败' })); return;
+        res.writeHead(422, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: '模拟腰围查询失败' })); return;
       }
       const items = waistRows.filter(row => (!q.get('member_id') || row.member_id === q.get('member_id')) &&
         (!q.get('kind') || row.kind === q.get('kind')) && (!q.get('from') || Date.parse(row.measured_at) >= Date.parse(q.get('from'))) &&
@@ -93,7 +100,7 @@ const server = http.createServer(async (req, res) => {
       latestRequests++;
       assert(url.searchParams.get('member_id'), 'overview fetched household latest values');
       body = { items: ['weight', 'body_fat', 'blood_pressure', 'pulse'].map((metric, n) => ({
-        member_id: url.searchParams.get('member_id'), metric, value: [64.2, 21.5, 118, 67][n],
+        member_id: url.searchParams.get('member_id'), metric, value: [latestWeight, 21.5, 118, 67][n],
         value_secondary: metric === 'blood_pressure' ? 76 : null, measured_at: '2026-10-12T03:00:00Z',
       })) };
     } else { res.writeHead(404); res.end(); return; }
@@ -125,6 +132,86 @@ const server = http.createServer(async (req, res) => {
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `overflow at ${width}`);
       await page.screenshot({ path: path.join(output, `family-overview-${width}.png`), fullPage: true });
     }
+
+    // Slow SSE and offline-sync refreshes retain the page, charts, focus and scroll.
+    // Use a rolling window so sync advances the request boundary without changing filters.
+    const refreshTimes = [...points, ...waistRows].map(row => [row, row.measured_at]);
+    const refreshOffset = Date.now() - Date.parse('2026-10-15T00:00:00Z');
+    for (const [row, measuredAt] of refreshTimes) row.measured_at = new Date(Date.parse(measuredAt) + refreshOffset).toISOString();
+    for (const width of [390, 1440]) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
+      for (const selected of ['', members[0].id, members[3].id]) {
+        await page.goto(base + '/?period=30' + (selected ? `&member_id=${selected}` : ''));
+        await chartCount(selected === members[3].id ? 0 : 5);
+        if (selected === members[3].id) await expect(page.getByText(/当前时间范围暂无有效/)).toHaveCount(5);
+        if (selected) await expect(waistCard()).toContainText(selected === members[3].id ? '暂无有效测量' : '80.4');
+        await expect(page.locator('[data-slot="skeleton"]')).toHaveCount(0);
+        await page.waitForTimeout(700); // Allow the initial SSE connection refresh to finish.
+        for (const event of ['change', 'eir-offline-updated']) {
+          let release;
+          refreshReads.length = 0;
+          refreshGate = new Promise(resolve => { release = resolve; });
+          await page.evaluate(() => {
+            document.querySelector('[role="tab"][data-state="active"]').focus({ preventScroll: true });
+            window.scrollTo(0, 250);
+          });
+          await page.waitForTimeout(50);
+          await page.evaluate(() => {
+            const nodes = [...document.querySelectorAll('main h1, [role="tablist"], main button, [data-slot="card"], [role="img"], canvas, footer')];
+            const rect = node => {
+              const b = node.getBoundingClientRect();
+              return [b.x, b.y + scrollY, b.width, b.height];
+            };
+            const probe = window.__overviewRefresh = {
+              nodes, bounds: nodes.map(rect), focus: document.activeElement,
+              scroll: scrollY, height: document.documentElement.scrollHeight, problems: [],
+              image: document.querySelector('[role="img"][aria-label*="血压"] canvas')?.toDataURL(),
+            };
+            const sample = () => {
+              if (probe.stopped) return;
+              if (nodes.some(node => !node.isConnected)) probe.problems.push('page/chart DOM was replaced');
+              if (nodes.some((node, i) => rect(node).some((value, j) => Math.abs(value - probe.bounds[i][j]) > 1))) probe.problems.push('layout moved');
+              if (Math.abs(scrollY - probe.scroll) > 1) probe.problems.push('scroll moved');
+              if (document.documentElement.scrollHeight !== probe.height) probe.problems.push('page height changed');
+              if (document.activeElement !== probe.focus) probe.problems.push('focus lost');
+              if (document.querySelector('[data-slot="skeleton"]')) probe.problems.push('skeleton returned');
+              requestAnimationFrame(sample);
+            };
+            requestAnimationFrame(sample);
+          });
+          try {
+            if (event === 'change') changed();
+            else await page.evaluate(event => window.dispatchEvent(new Event(event)), event);
+            await expect.poll(() => refreshReads.some(url => url.pathname.endsWith('/measurements/series')) &&
+              refreshReads.some(url => url.pathname.endsWith('/health/observations'))).toBe(true);
+            await page.waitForTimeout(150);
+            assert.deepEqual(await page.evaluate(() => [...new Set(window.__overviewRefresh.problems)]), [], `inflight ${width}/${selected || 'family'}/${event}`);
+            // New readings and chart points must arrive without replacing their containers.
+            if (selected === members[0].id) {
+              latestWeight += 1;
+              points.filter(row => row.member_id === selected && row.kind === 'blood_pressure').forEach(row => { row.systolic += 1; });
+            }
+            refreshGate = null; release();
+            if (selected === members[0].id) {
+              await expect(page.locator('[data-slot="card"]').filter({ has: page.locator('[data-slot="card-description"]').filter({ hasText: /^体重$/ }) })).toContainText(String(latestWeight));
+              await expect.poll(() => page.evaluate(() => document.querySelector('[role="img"][aria-label*="血压"] canvas')?.toDataURL() !== window.__overviewRefresh.image)).toBe(true);
+            }
+            await page.waitForTimeout(300);
+            assert.deepEqual(await page.evaluate(() => [...new Set(window.__overviewRefresh.problems)]), [], `complete ${width}/${selected || 'family'}/${event}`);
+            assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `refresh overflow at ${width}`);
+          } finally {
+            refreshGate = null; release();
+            await page.evaluate(() => { window.__overviewRefresh.stopped = true; });
+          }
+        }
+      }
+    }
+    console.log('PASS stable refresh: 12 slow SSE/offline-sync cases at 390/1440px, family/member/empty views, persistent charts/layout/scroll/focus, updated data');
+    for (const [row, measuredAt] of refreshTimes) row.measured_at = measuredAt;
+    latestWeight = 64.2;
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(base + '/?period=all');
+    await chartCount(5);
     await page.getByRole('tab', { name: '成员甲', exact: true }).click();
     await chartCount(5);
     await page.waitForFunction(() => document.body.textContent.includes('64.2'));
@@ -260,6 +347,6 @@ const server = http.createServer(async (req, res) => {
     await chartCount(5);
     failWaist = false;
     assert.deepEqual(errors, []);
-    console.log('PASS synthetic overview: 5 charts, member cards, waist CRUD/SSE, decimal backfill, >200 points, validation, failure recovery, member isolation, date filters, zoom, 390/1440px layouts');
+    console.log('PASS synthetic overview: stable SSE/offline refresh DOM/layout/scroll/focus, updated readings/charts, empty states, 5 charts, member cards, waist CRUD/SSE, decimal backfill, >200 points, validation, failure recovery, member isolation, date filters, zoom, 390/1440px layouts');
   } finally { await browser.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
 })().catch(error => { console.error(error); server.closeAllConnections(); server.close(); process.exitCode = 1; });

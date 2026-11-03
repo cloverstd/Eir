@@ -332,6 +332,9 @@ export function MeasurementsPage({
     group: "day",
     page: 1,
   };
+  // A rolling window advancing during sync is a refresh of the same selection.
+  // Only filter changes should discard the previous result and reset the charts.
+  const scopeKey = JSON.stringify([mode, scope]);
   const query = measurementQuery({ ...scope, kind }, now);
   const seriesQuery = new URLSearchParams(query);
   seriesQuery.delete("page");
@@ -356,7 +359,7 @@ export function MeasurementsPage({
     revision,
   );
   const curves = useResource<Row[]>(
-    "series:" + mode + ":" + seriesQuery,
+    "series:" + scopeKey,
     async (signal) => {
       const read = (path: string) => api(path, "GET", undefined, signal);
       const first = await loadSeries(seriesQuery.toString(), read);
@@ -380,7 +383,7 @@ export function MeasurementsPage({
     now,
   );
   const waistCurves = useResource<Row[]>(
-    overview ? "waist-series:" + waistQuery : null,
+    overview ? "waist-series:" + scopeKey : null,
     (signal) =>
       loadObservationSeries(waistQuery, (path) =>
         api(path, "GET", undefined, signal),
@@ -410,7 +413,7 @@ export function MeasurementsPage({
   const tableQuery = new URLSearchParams(applyZoom(query, range));
   tableQuery.set("page", String(page));
   const table = useResource<{ items: Row[]; total: number }>(
-    overview ? null : "table:" + tableQuery,
+    overview ? null : `table:${scopeKey}:${page}:${zoomFrom}:${zoomTo}`,
     (signal) => api("measurements?" + tableQuery, "GET", undefined, signal),
     { items: [], total: 0 },
     revision,
@@ -437,9 +440,11 @@ export function MeasurementsPage({
       ? ["weight", "body_fat"]
       : ["blood_pressure", "pulse"];
   const memberIDs = new Set(members.map((m) => m.id));
-  const plotRows = overview
-    ? curves.data.concat(waistCurves.data)
-    : curves.data;
+  const plotRows = useMemo(
+    () =>
+      overview ? curves.data.concat(waistCurves.data) : curves.data,
+    [overview, curves.data, waistCurves.data],
+  );
   const latestRows = overview
     ? latest.data.concat(waistLatest.data)
     : latest.data;
@@ -548,13 +553,16 @@ export function MeasurementsPage({
                 </p>
               )}
             </InfoTip>
-            {(curves.loading || waistCurves.loading) && (
-              <LoaderCircle
-                className="size-4 animate-spin text-muted-foreground"
-                role="status"
-                aria-label="正在加载完整历史"
-              />
-            )}
+            <span className="flex size-4 shrink-0 items-center justify-center">
+              {((curves.loading && !curves.loaded) ||
+                (waistCurves.loading && !waistCurves.loaded)) && (
+                <LoaderCircle
+                  className="size-4 animate-spin text-muted-foreground"
+                  role="status"
+                  aria-label="正在加载完整历史"
+                />
+              )}
+            </span>
           </div>
         </div>
       )}
@@ -678,7 +686,7 @@ export function MeasurementsPage({
         <div className="grid min-w-0 gap-4 xl:grid-cols-2">
           {metrics.map((metric) =>
             curveResource(metric).loading &&
-            !curveResource(metric).data.length ? (
+            !curveResource(metric).loaded ? (
               <Skeleton
                 key={metric}
                 className={`h-96 ${metric === "waist" ? "xl:col-span-2" : ""}`}
@@ -726,7 +734,7 @@ export function MeasurementsPage({
             <div className="grid min-w-0 gap-4 xl:grid-cols-2">
               {metrics.map((metric) =>
                 curveResource(metric).loading &&
-                !curveResource(metric).data.length ? (
+                !curveResource(metric).loaded ? (
                   <Skeleton
                     key={metric}
                     className={`h-96 ${metric === "waist" ? "xl:col-span-2" : ""}`}
