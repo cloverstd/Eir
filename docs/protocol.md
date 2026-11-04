@@ -118,7 +118,7 @@ Web 全站共用 `/api/v1/events/stream` 一条 SSE 连接。`change` 合并触�
 
 `GET /devices`、设备详情与新增设备响应增加可空的只读字段 `scale_number`（整数）。schema 6 自动为体脂秤分配并持久化编号，UI 使用 `S` 前缀及至少三位数字；创建请求不能指定编号，血压计为空。该字段独立于 BLE 身份及 MQTT 生命周期作用域。
 
-Web URL 的 `period` 新增 `180`（最近半年）和 `365`（最近一年），分别按上海时间的 6／12 个自然月计算；`30`／`90` 保持天数窗口。日历自定义范围仍保存 `period=custom&from=YYYY-MM-DD&to=YYYY-MM-DD`，现有 HTTP 时间边界与日期表单字段格式保持兼容。
+Web URL 的 `period` 支持 `7`（最近 7 天）、`week`（本周）、`month`（本月）、`30`、`90`、`180`（最近半年）和 `365`（最近一年）。`week` 从上海时间本周一零点起算，`month` 从上海时间当月 1 日零点起算；`7`／`30`／`90` 为滚动天数窗口，`180`／`365` 分别按上海时间的 6／12 个自然月计算。这些快捷范围通过 API 的 `from` 下界筛选。日历自定义范围仍保存 `period=custom&from=YYYY-MM-DD&to=YYYY-MM-DD`，现有 HTTP 时间边界与日期表单字段格式保持兼容。
 
 ## 按成员 MCP 与私有 ChatGPT Tunnel
 

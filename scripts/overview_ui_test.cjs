@@ -346,7 +346,39 @@ const server = http.createServer(async (req, res) => {
     await expect(waistCard()).toContainText('80.4');
     await chartCount(5);
     failWaist = false;
+
+    // Presets use Shanghai boundaries even in a browser in another timezone.
+    await page.clock.setFixedTime(new Date('2026-11-04T04:30:00Z'));
+    const presets = [
+      ['7', '最近 7 天', '2026-10-28T04:30:00.000Z'],
+      ['week', '本周', '2026-11-01T16:00:00.000Z'],
+      ['month', '本月', '2026-10-31T16:00:00.000Z'],
+    ];
+    for (const width of [1440, 390]) {
+      const height = width === 390 ? 844 : 1000;
+      await page.setViewportSize({ width, height });
+      for (const target of ['/?period=all', `/members/${members[0].id}/metrics?kind=waist&period=all`]) {
+        await page.goto(base + target);
+        const picker = page.getByRole('button', { name: '时间范围', exact: true });
+        for (const [period, label, from] of presets) {
+          observationQueries.length = 0;
+          await picker.click();
+          const panel = page.locator('[data-slot="popover-content"]');
+          await expect(panel.getByRole('button', { name: label, exact: true })).toBeVisible();
+          await page.waitForTimeout(250);
+          const box = await panel.boundingBox();
+          assert(box.x >= 0 && box.y >= 0 && box.x + box.width <= width + 1 && box.y + box.height <= height + 1, `preset panel leaves ${width}px viewport`);
+          await panel.getByRole('button', { name: label, exact: true }).click();
+          await expect(picker).toHaveText(label);
+          assert.equal(new URL(page.url()).searchParams.get('period'), period);
+          await expect.poll(() => observationQueries.some(q => q.get('from') === from)).toBe(true);
+          await page.reload();
+          await expect(picker).toHaveText(label);
+          assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `preset overflow at ${width}`);
+        }
+      }
+    }
     assert.deepEqual(errors, []);
-    console.log('PASS synthetic overview: stable SSE/offline refresh DOM/layout/scroll/focus, updated readings/charts, empty states, 5 charts, member cards, waist CRUD/SSE, decimal backfill, >200 points, validation, failure recovery, member isolation, date filters, zoom, 390/1440px layouts');
+    console.log('PASS synthetic overview: stable SSE/offline refresh DOM/layout/scroll/focus, updated readings/charts, empty states, 5 charts, member cards, waist CRUD/SSE, decimal backfill, >200 points, validation, failure recovery, member isolation, date filters, zoom, Shanghai presets and reloads, visible picker panels, 390/1440px layouts');
   } finally { await browser.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
 })().catch(error => { console.error(error); server.closeAllConnections(); server.close(); process.exitCode = 1; });

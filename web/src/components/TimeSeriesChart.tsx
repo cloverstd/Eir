@@ -171,9 +171,15 @@ export function TimeSeriesChart({
           showSymbol: s.data.length < 80,
           symbolSize: 6,
           connectNulls: false,
-          smooth: false,
+          smooth: 0.35,
+          smoothMonotone: "x",
           itemStyle: { color: s.color || colors[index % colors.length] },
-          lineStyle: { width: 2, type: s.lineType || "solid" },
+          lineStyle: {
+            width: 2,
+            type: s.lineType || "solid",
+            cap: "round",
+            join: "round",
+          },
           ...(index === 0 && reference?.band
             ? {
                 markArea: {

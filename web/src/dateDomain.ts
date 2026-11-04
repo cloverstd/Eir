@@ -1,4 +1,7 @@
 export const rangePresets = [
+  { value: "7", label: "最近 7 天" },
+  { value: "week", label: "本周" },
+  { value: "month", label: "本月" },
   { value: "30", label: "最近 30 天" },
   { value: "90", label: "最近 90 天" },
   { value: "180", label: "最近半年" },
@@ -62,6 +65,16 @@ export function rangeBounds(
           }
         : {}),
     };
+  if (period === "week" || period === "month") {
+    const start = new Date(now + 8 * 3600000);
+    start.setUTCHours(0, 0, 0, 0);
+    start.setUTCDate(
+      period === "month"
+        ? 1
+        : start.getUTCDate() - ((start.getUTCDay() + 6) % 7),
+    );
+    return { from: new Date(start.getTime() - 8 * 3600000).toISOString() };
+  }
   const start =
     period === "180"
       ? monthsBefore(now, 6)

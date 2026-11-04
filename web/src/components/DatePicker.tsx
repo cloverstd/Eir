@@ -333,8 +333,7 @@ export function DateRangePicker({
       ? [from ? display(from) : "开始日期", to ? display(to) : "结束日期"].join(
           " — ",
         )
-      : rangePresets.find((p) => p.value === period)?.label ||
-        (period === "7" ? "最近 7 天" : "选择时间范围");
+      : rangePresets.find((p) => p.value === period)?.label || "选择时间范围";
   return (
     <Popover
       open={open}
@@ -362,7 +361,7 @@ export function DateRangePicker({
       </PopoverTrigger>
       <PopoverContent
         align="start"
-        className="max-h-[calc(100dvh-2rem)] w-auto max-w-[calc(100vw-2rem)] overflow-y-auto p-0"
+        className="max-h-[min(calc(100dvh-2rem),var(--radix-popover-content-available-height))] w-auto max-w-[calc(100vw-2rem)] overflow-y-auto p-0"
       >
         <div className="flex flex-col sm:flex-row">
           <div className="grid grid-cols-2 gap-1 border-b p-3 sm:flex sm:w-36 sm:shrink-0 sm:flex-col sm:border-r sm:border-b-0">
