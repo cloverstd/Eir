@@ -79,7 +79,9 @@ func (s *Server) measurementSeries(w http.ResponseWriter, r *http.Request) {
 	where += " AND measured_at IS NOT NULL AND received_at<=" + store.Placeholder(len(args))
 	// Return invalid weight points as nulls in the UI, preserving a visible gap.
 	// Untimed readings remain available in the full measurement table only.
-	data, err := s.Store.List(r.Context(), `SELECT id,member_id,member_name,device_id,device_name,kind,measured_at,time_valid,weight_valid,systolic,diastolic,pulse,weight_kg,body_fat_pct,body_fat_status FROM measurement_details WHERE `+where+` ORDER BY measured_at,id LIMIT 1001`, args...)
+	data, err := s.Store.List(r.Context(), `SELECT id,member_id,member_name,device_id,device_name,kind,measured_at,time_valid,weight_valid,systolic,diastolic,pulse,weight_kg,body_fat_pct,body_fat_status,
+	 CASE WHEN weight_valid AND bmi>0 THEN bmi END AS bmi
+	 FROM measurement_details WHERE `+where+` ORDER BY measured_at,id LIMIT 1001`, args...)
 	if err != nil {
 		fail(w, err)
 		return

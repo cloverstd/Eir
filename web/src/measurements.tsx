@@ -95,6 +95,7 @@ const units: Record<Metric, string> = {
   pulse: "次/分",
   waist: "cm",
 };
+const bmiAxis = { name: "BMI", unit: "kg/m²" };
 const icons = {
   weight: Scale,
   body_fat: Droplets,
@@ -214,7 +215,8 @@ function MetricPlot({
         </p>
       ) : familyMembers ? (
         <p>
-          颜色区分成员；血压实线为收缩压，虚线为舒张压。
+          颜色区分成员。
+          {metric !== "body_fat" && "血压实线为收缩压，虚线为舒张压。"}
           选择成员后可查看个人参考范围和最新读数。
         </p>
       ) : reference ? (
@@ -235,7 +237,7 @@ function MetricPlot({
         <p>成员资料不足或不在成人参考适用范围，暂不显示参考带。</p>
       )}
       {metric === "body_fat" && (
-        <p>体脂由设备读数及个人资料估算，缺测保持断点。</p>
+        <p>估算体脂率实线对应左轴（%），BMI 虚线对应右轴（kg/m²）。缺测保持断点。</p>
       )}
     </>
   );
@@ -269,6 +271,7 @@ function MetricPlot({
             range={range}
             domain={domain}
             showExtrema={metric === "weight"}
+            rightAxis={metric === "body_fat" ? bmiAxis : undefined}
           />
         ) : (
           <div className="p-3">

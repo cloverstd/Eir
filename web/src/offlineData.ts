@@ -266,6 +266,8 @@ export function localRead(path: string, s: Snapshot): unknown {
             body_fat_pct: o.value,
             body_fat_status: "estimated",
           });
+        if (o.kind === "bmi")
+          Object.assign(row, { kind: "body_composition", bmi: o.value });
         grouped.set(id, row);
       }
       measurements = [...grouped.values()];

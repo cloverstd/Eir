@@ -97,6 +97,23 @@ test("overview curves and latest values use the same snapshot", () => {
     80,
   );
 });
+test("older offline snapshots reconstruct body-composition BMI from the original device record", () => {
+  const measurement = {
+    source_record_id: "scale-1", member_id: "a", measured_at: now, source: "device",
+  };
+  const result = localRead("measurements/series?kind=body_composition&member_id=a", {
+    ...snapshot,
+    measurements: undefined,
+    observations: [
+      { ...measurement, id: "scale-1:weight", kind: "weight", value: 70 },
+      { ...measurement, id: "scale-1:bmi", kind: "bmi", value: 24.22 },
+      { ...measurement, source: "manual", id: "manual-1:bmi", kind: "bmi", value: 27 },
+    ],
+  });
+  assert.equal(result.items.length, 1);
+  assert.equal(result.items[0].weight_kg, 70);
+  assert.equal(result.items[0].bmi, 24.22);
+});
 test("offline statistics never combine members or different units", () => {
   const result = localRead(
     "health/statistics?member_id=a&kind=waist&group=day",

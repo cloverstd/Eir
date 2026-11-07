@@ -3570,7 +3570,7 @@
     "/measurements/series": {
       "get": {
         "summary": "按原始测量时间和 ID 游标分页的完整趋势点",
-        "description": "每批最多 1000 个原始点，按 measured_at,id 升序；默认 kind=blood_pressure。客户端应持续读取 next_cursor 至 null。游标固定首次查询的接收时间上界。未校时记录不返回，未锁定体重保留 weight_valid=false 供图表显示断点；缺失体脂由 body_fat_status 判定，不能绘为 0。不返回原始蓝牙包。",
+        "description": "每批最多 1000 个原始点，按 measured_at,id 升序；默认 kind=blood_pressure。客户端应持续读取 next_cursor 至 null。游标固定首次查询的接收时间上界。未校时记录不返回，未锁定体重保留 weight_valid=false 供图表显示断点；缺失体脂由 body_fat_status 判定，不能绘为 0。BMI 来自锁定称重记录中已保存的数值，缺失时为 null。不返回原始蓝牙包。",
         "parameters": [
           {
             "name": "member_id",
@@ -5828,6 +5828,11 @@
           "weight_kg": {
             "type": "number",
             "nullable": true
+          },
+          "bmi": {
+            "type": "number",
+            "nullable": true,
+            "description": "锁定称重记录中已保存的 BMI（kg/m²）；无有效值时为 null。"
           },
           "body_fat_pct": {
             "type": "number",

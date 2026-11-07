@@ -6,6 +6,7 @@ export type ChartSeries = {
   data: [number, number | null][];
   color?: string;
   lineType?: "solid" | "dashed";
+  axis?: "right";
 };
 export type Reference = {
   label: string;
@@ -121,7 +122,7 @@ export function metricSeries(rows: Row[], metric: Metric): ChartSeries[] {
         Date.parse(a.measured_at) - Date.parse(b.measured_at) ||
         String(a.id).localeCompare(String(b.id)),
     );
-  return keys.map(([key, name]) => ({
+  const series: ChartSeries[] = keys.map(([key, name]) => ({
     id: key,
     name,
     data: points.map((row) => [
@@ -133,6 +134,23 @@ export function metricSeries(rows: Row[], metric: Metric): ChartSeries[] {
         : Number(row[key]),
     ]),
   }));
+  if (metric === "body_fat") {
+    series.push({
+      id: "bmi",
+      name: "BMI",
+      color: "#7c3aed",
+      lineType: "dashed",
+      axis: "right",
+      data: points.map((row) => {
+        const bmi = Number(row.bmi);
+        return [
+          Date.parse(row.measured_at),
+          row.weight_valid === false || !Number.isFinite(bmi) || bmi <= 0 ? null : bmi,
+        ];
+      }),
+    });
+  }
+  return series;
 }
 // Member colors remain consistent across all household metric charts.
 const memberColors = ["#2563eb", "#c2410c", "#059669", "#9333ea", "#be185d", "#0e7490", "#a16207", "#4f46e5"];
@@ -153,7 +171,7 @@ export function familyMetricSeries(rows: Row[], metric: Metric, members: Row[]):
     return metricSeries(grouped.get(member.id) || [], metric).map((series, part) => ({
       ...series,
       id: `${member.id}:${series.id}`,
-      name: metric === "blood_pressure" ? `${label} · ${series.name}` : label,
+      name: metric === "blood_pressure" || series.axis === "right" ? `${label} · ${series.name}` : label,
       color: memberColors[index] || `hsl(${Math.round(index * 137.508) % 360}, 65%, 42%)`,
       lineType: part === 1 ? "dashed" as const : "solid" as const,
     }));

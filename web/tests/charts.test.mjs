@@ -71,16 +71,21 @@ test("household curves isolate people, share member colors, and distinguish bloo
   assert.equal(pulse[1].color, bp[2].color);
   assert.deepEqual(pulse.map(s => s.data.map(p => p[1])), [[70], [65]]);
 });
-test("household series preserve missing body-fat gaps, empty members, and duplicate-name identities", () => {
+test("household body-fat and BMI series preserve gaps, empty members, and duplicate-name identities", () => {
   const members = [{id: "a", name: "同名"}, {id: "b", name: "同名"}];
   const rows = [
-    {id: "1", member_id: "a", kind: "body_composition", measured_at: "2026-10-18T01:00:00Z", weight_valid: true, body_fat_pct: 20, body_fat_status: "estimated"},
-    {id: "2", member_id: "a", kind: "body_composition", measured_at: "2026-10-18T02:00:00Z", weight_valid: true, body_fat_pct: 0, body_fat_status: "missing_adc"},
+    {id: "1", member_id: "a", kind: "body_composition", measured_at: "2026-10-18T01:00:00Z", weight_valid: true, body_fat_pct: 20, body_fat_status: "estimated", bmi: 24.22},
+    {id: "2", member_id: "a", kind: "body_composition", measured_at: "2026-10-18T02:00:00Z", weight_valid: true, body_fat_pct: 0, body_fat_status: "missing_adc", bmi: 0},
+    {id: "3", member_id: "a", kind: "body_composition", measured_at: "2026-10-18T03:00:00Z", weight_valid: false, body_fat_pct: 30, body_fat_status: "estimated", bmi: 30},
+    {id: "4", member_id: "a", kind: "body_composition", measured_at: "2026-10-18T04:00:00Z", weight_valid: true, body_fat_pct: 20.5, body_fat_status: "estimated"},
   ];
   const series = familyMetricSeries(rows, "body_fat", members);
-  assert.deepEqual(series.map(s => s.name), ["同名（1）", "同名（2）"]);
-  assert.deepEqual(series[0].data.map(p => p[1]), [20, null]);
-  assert.deepEqual(series[1].data, []);
+  assert.deepEqual(series.map(s => s.name), ["同名（1）", "同名（1） · BMI", "同名（2）", "同名（2） · BMI"]);
+  assert.deepEqual(series.map(s => s.axis), [undefined, "right", undefined, "right"]);
+  assert.equal(series[0].color, series[1].color);
+  assert.equal(series[1].lineType, "dashed");
+  assert.deepEqual(series.map(s => s.data.map(p => p[1])), [[20, null, null, 20.5], [24.22, null, null, null], [], []]);
+  assert.equal(series[0].data[0][0], series[1].data[0][0]);
 });
 
 test("waist keeps decimal original points, member colors and has no medical reference", () => {

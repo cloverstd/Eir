@@ -44,6 +44,7 @@ type Props = {
   range?: TimeRange;
   domain?: TimeRange;
   showExtrema?: boolean;
+  rightAxis?: { name: string; unit: string };
 };
 
 export function TimeSeriesChart({
@@ -55,6 +56,7 @@ export function TimeSeriesChart({
   range,
   domain,
   showExtrema,
+  rightAxis,
 }: Props) {
   const ref = useRef<HTMLDivElement>(null),
     chartRef = useRef<echarts.ECharts | null>(null);
@@ -88,6 +90,18 @@ export function TimeSeriesChart({
         from: first,
         to: last === first ? last + 60000 : last,
       };
+    const plottedSeries = series
+      .map((s) => ({
+        s,
+        data: range
+          ? s.data.filter(([time]) => time >= range.from && time <= range.to)
+          : s.data,
+      }))
+      .filter(({ s, data }) => s.axis !== "right" || data.some(([, value]) => value !== null));
+    const rightSeriesIds = new Set(
+      plottedSeries.filter(({ s }) => s.axis === "right").map(({ s }) => s.id),
+    );
+    const showRightAxis = Boolean(rightAxis && rightSeriesIds.size);
     const extremaSeries = (): LineSeriesOption => {
       let min = Infinity;
       let max = -Infinity;
@@ -141,7 +155,7 @@ export function TimeSeriesChart({
           fontFamily: 'system-ui, "PingFang SC", sans-serif',
           fontSize: 11,
         },
-        grid: { left: 54, right: 24, top: 24, bottom: 60 },
+        grid: { left: 54, right: showRightAxis ? 54 : 24, top: 24, bottom: 60 },
         legend: {
           type: "scroll",
           bottom: 0,
@@ -159,10 +173,10 @@ export function TimeSeriesChart({
             return (
               `<strong>${escape(memberName || label)}</strong><br/>${escape(stamp ? time(stamp) : "")}<br/>` +
               values
-                .map(
-                  (p: any) =>
-                    `${p.marker}${escape(p.seriesName)}：${p.value?.[1] == null ? "—" : escape(p.value[1])} ${escape(unit)}`,
-                )
+                .map((p: any) => {
+                  const seriesUnit = rightAxis && rightSeriesIds.has(p.seriesId) ? rightAxis.unit : unit;
+                  return `${p.marker}${escape(p.seriesName)}：${p.value?.[1] == null ? "—" : escape(p.value[1])} ${escape(seriesUnit)}`;
+                })
                 .join("<br/>")
             );
           },
@@ -191,32 +205,50 @@ export function TimeSeriesChart({
               }),
           },
         },
-        yAxis: {
-          type: "value",
-          name: unit,
-          scale: true,
-          axisLabel: {
-            color: "#737373",
-            formatter: (value: number) =>
-              value.toLocaleString("zh-CN", { maximumFractionDigits: 1 }),
+        yAxis: [
+          {
+            id: "primary",
+            type: "value",
+            name: unit,
+            position: "left",
+            scale: true,
+            axisLabel: {
+              color: "#737373",
+              formatter: (value: number) =>
+                value.toLocaleString("zh-CN", { maximumFractionDigits: 1 }),
+            },
+            splitLine: { lineStyle: { color: "#f0f0f0" } },
+            min: referenceValues.length
+              ? (value: { min: number }) =>
+                  Math.floor(Math.min(value.min, ...referenceValues) - 1)
+              : undefined,
+            max: referenceValues.length
+              ? (value: { max: number }) =>
+                  Math.ceil(Math.max(value.max, ...referenceValues) + 1)
+              : undefined,
           },
-          splitLine: { lineStyle: { color: "#f0f0f0" } },
-          min: referenceValues.length
-            ? (value: { min: number }) =>
-                Math.floor(Math.min(value.min, ...referenceValues) - 1)
-            : undefined,
-          max: referenceValues.length
-            ? (value: { max: number }) =>
-                Math.ceil(Math.max(value.max, ...referenceValues) + 1)
-            : undefined,
-        },
-        series: series.map<LineSeriesOption>((s, index) => ({
+          ...(rightAxis ? [{
+            id: "secondary",
+            type: "value",
+            name: rightAxis.name,
+            position: "right",
+            show: showRightAxis,
+            scale: true,
+            minInterval: 0.01,
+            axisLabel: {
+              color: "#737373",
+              formatter: (value: number) =>
+                value.toLocaleString("zh-CN", { maximumFractionDigits: 2 }),
+            },
+            splitLine: { show: false },
+          }] : []),
+        ],
+        series: plottedSeries.map<LineSeriesOption>(({ s, data }, index) => ({
           id: s.id,
           name: s.name,
           type: "line",
-          data: range
-            ? s.data.filter(([time]) => time >= range.from && time <= range.to)
-            : s.data,
+          yAxisIndex: rightAxis && s.axis === "right" ? 1 : 0,
+          data,
           showSymbol: s.data.length < 80,
           symbolSize: 6,
           connectNulls: false,
@@ -263,7 +295,7 @@ export function TimeSeriesChart({
             : {}),
         })).concat(showExtrema ? [extremaSeries()] : []),
       },
-      { replaceMerge: ["series"], silent: true },
+      { replaceMerge: ["series", "yAxis"], silent: true },
     );
     if (!showExtrema) return;
     const onLegendChange = (event: unknown) => {
@@ -282,6 +314,7 @@ export function TimeSeriesChart({
     memberName,
     reference,
     showExtrema,
+    rightAxis,
     range?.from,
     range?.to,
     domain?.from,

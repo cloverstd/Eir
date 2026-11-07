@@ -72,7 +72,9 @@ func TestMeasurementViewsIntegration(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	fatID := insertBody(member, now.Add(-24*time.Hour), true, "estimated", 70, 20)
 	weightID := insertBody(member, now, true, "missing_adc", 71, 0)
-	insertBody(member, now.Add(time.Hour), false, "estimated", 99, 40)
+	unlockedID := insertBody(member, now.Add(time.Hour), false, "estimated", 99, 40)
+	exec(`UPDATE body_composition SET bmi=24.22 WHERE measurement_id=$1`, fatID)
+	exec(`UPDATE body_composition SET bmi=34.26 WHERE measurement_id=$1`, unlockedID)
 	insertBody(member, nil, true, "estimated", 98, 40)
 	insertBody(second, now, true, "estimated", 55, 27)
 	app := New(db, "http://localhost", t.TempDir(), t.TempDir())
@@ -142,9 +144,15 @@ func TestMeasurementViewsIntegration(t *testing.T) {
 		if len(items) != 3 {
 			t.Fatal("untimed point was included or valid gap lost")
 		}
+		wantBMI := map[string]any{fatID: 24.22, weightID: nil, unlockedID: nil}
 		for _, item := range items {
-			if item.(map[string]any)["kind"] != "body_composition" {
+			row := item.(map[string]any)
+			if row["kind"] != "body_composition" {
 				t.Fatal("kind leakage")
+			}
+			want, expected := wantBMI[row["id"].(string)]
+			if bmi, present := row["bmi"]; !expected || !present || bmi != want {
+				t.Fatalf("unexpected BMI for %v: %v, want %v", row["id"], bmi, want)
 			}
 		}
 		table := get("measurements?kind=body_composition&member_id=" + member)
