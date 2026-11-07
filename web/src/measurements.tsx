@@ -268,6 +268,7 @@ function MetricPlot({
             reference={reference}
             range={range}
             domain={domain}
+            showExtrema={metric === "weight"}
           />
         ) : (
           <div className="p-3">

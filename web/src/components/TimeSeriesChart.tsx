@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import * as echarts from "echarts/core";
 import { LineChart } from "echarts/charts";
+import type { LineSeriesOption } from "echarts/charts";
 import {
   GridComponent,
   LegendComponent,
@@ -42,6 +43,7 @@ type Props = {
   reference?: Reference;
   range?: TimeRange;
   domain?: TimeRange;
+  showExtrema?: boolean;
 };
 
 export function TimeSeriesChart({
@@ -52,9 +54,11 @@ export function TimeSeriesChart({
   reference,
   range,
   domain,
+  showExtrema,
 }: Props) {
   const ref = useRef<HTMLDivElement>(null),
     chartRef = useRef<echarts.ECharts | null>(null);
+  const legendSelection = useRef<Record<string, boolean>>({});
   useEffect(() => {
     if (!ref.current) return;
     const chart = echarts.init(ref.current);
@@ -84,6 +88,51 @@ export function TimeSeriesChart({
         from: first,
         to: last === first ? last + 60000 : last,
       };
+    const extremaSeries = (): LineSeriesOption => {
+      let min = Infinity;
+      let max = -Infinity;
+      for (const { name, data } of series) {
+        if (legendSelection.current[name] === false) continue;
+        for (const [stamp, value] of data) {
+          if (
+            stamp < bounds.from || stamp > bounds.to ||
+            value === null || !Number.isFinite(value)
+          ) continue;
+          min = Math.min(min, value);
+          max = Math.max(max, value);
+        }
+      }
+      // Keep the chart-wide markers independent of the individual legend entries.
+      return {
+        id: "extrema-markers",
+        type: "line",
+        data: [],
+        silent: true,
+        markLine: {
+          silent: true,
+          symbol: "none",
+          precision: -1,
+          lineStyle: { type: [5, 7], width: 1.5 },
+          label: { fontSize: 10, formatter: ({ name }) => name },
+          data: min === Infinity
+            ? []
+            : [
+                {
+                  yAxis: max,
+                  name: `最高 ${max} ${unit}`,
+                  lineStyle: { color: "#dc2626" },
+                  label: { position: "insideEndTop" },
+                },
+                {
+                  yAxis: min,
+                  name: `最低 ${min} ${unit}`,
+                  lineStyle: { color: "#2563eb", dashOffset: 6 },
+                  label: { position: "insideStartTop" },
+                },
+              ],
+        },
+      };
+    };
     chart.setOption(
       {
         animation: false,
@@ -161,7 +210,7 @@ export function TimeSeriesChart({
                 Math.ceil(Math.max(value.max, ...referenceValues) + 1)
             : undefined,
         },
-        series: series.map((s, index) => ({
+        series: series.map<LineSeriesOption>((s, index) => ({
           id: s.id,
           name: s.name,
           type: "line",
@@ -189,7 +238,7 @@ export function TimeSeriesChart({
                     [
                       { yAxis: reference.band[0] },
                       { yAxis: reference.band[1] },
-                    ],
+                    ] as [{ yAxis: number }, { yAxis: number }],
                   ],
                 },
               }
@@ -199,9 +248,9 @@ export function TimeSeriesChart({
                 markLine: {
                   silent: true,
                   symbol: "none",
-                  lineStyle: { type: "dashed", color: "#a3a3a3" },
+                  lineStyle: { type: "dashed" as const, color: "#a3a3a3" },
                   label: {
-                    position: "insideEndTop",
+                    position: "insideEndTop" as const,
                     fontSize: 10,
                     formatter: (p: any) => p.name,
                   },
@@ -212,16 +261,27 @@ export function TimeSeriesChart({
                 },
               }
             : {}),
-        })),
+        })).concat(showExtrema ? [extremaSeries()] : []),
       },
       { replaceMerge: ["series"], silent: true },
     );
+    if (!showExtrema) return;
+    const onLegendChange = (event: unknown) => {
+      const { selected } = event as { selected: Record<string, boolean> };
+      legendSelection.current = { ...legendSelection.current, ...selected };
+      chart.setOption({ series: [extremaSeries()] }, { silent: true });
+    };
+    chart.on("legendselectchanged", onLegendChange);
+    return () => {
+      chart.off("legendselectchanged", onLegendChange);
+    };
   }, [
     series,
     unit,
     label,
     memberName,
     reference,
+    showExtrema,
     range?.from,
     range?.to,
     domain?.from,
