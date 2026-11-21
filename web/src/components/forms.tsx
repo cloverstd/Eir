@@ -170,19 +170,19 @@ export function Disclosure({
         interacted.current = true;
         setExpanded(next);
       }}
-      className={cn("min-w-0 rounded-lg border bg-card", className)}
+      className={cn("health-card min-w-0 border bg-card", className)}
       {...props}
     >
       <CollapsibleTrigger asChild>
         <Button
           variant="ghost"
-          className="group h-auto w-full justify-between gap-4 rounded-lg px-4 py-3 text-left whitespace-normal"
+          className="group h-auto w-full justify-between gap-4 rounded-2xl px-4 py-3.5 text-left whitespace-normal hover:bg-muted/40"
         >
-          <span className="min-w-0 break-words">{title}</span>
-          <ChevronDown className="size-4 shrink-0 transition-transform group-data-[state=open]:rotate-180" />
+          <span className="min-w-0 break-words font-medium">{title}</span>
+          <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
         </Button>
       </CollapsibleTrigger>
-      <CollapsibleContent className="space-y-4 border-t px-4 py-4">
+      <CollapsibleContent className="space-y-4 border-t border-border/70 px-4 py-4">
         {content}
       </CollapsibleContent>
     </Collapsible>
@@ -190,8 +190,8 @@ export function Disclosure({
 }
 export function Empty({ children }: { children: ReactNode }) {
   return (
-    <div className="flex min-h-32 flex-col items-center justify-center gap-3 rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-      <Inbox className="size-6 opacity-50" />
+    <div className="flex min-h-32 flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-border/90 bg-muted/25 p-6 text-center text-sm text-muted-foreground">
+      <Inbox className="size-6 opacity-45" />
       <div>{children}</div>
     </div>
   );

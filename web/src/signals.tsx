@@ -12,12 +12,15 @@ import { useAPI, useRealtime } from "./realtime";
 import { TimeSeriesChart } from "./components/TimeSeriesChart";
 import type { ChartSeries } from "./chartDomain";
 import type { Row } from "./api";
+import { cn } from "./lib/utils";
+
 const Context = createContext<{
   rows: Row[];
   version: number;
   now: number;
   error: string;
 }>({ rows: [], version: 0, now: 0, error: "" });
+
 export function SignalProvider({ children }: { children: ReactNode }) {
   const { version, signalsVersion } = useRealtime();
   const resource = useAPI<Row[]>("signals/latest", [], signalsVersion);
@@ -39,11 +42,21 @@ export function SignalProvider({ children }: { children: ReactNode }) {
     </Context.Provider>
   );
 }
+
 const date = (s: string) =>
   new Date(s).toLocaleString("zh-CN", {
     timeZone: "Asia/Shanghai",
     hour12: false,
   });
+
+function barTone(bars: number, stale: boolean) {
+  if (stale) return "bg-muted-foreground/50";
+  if (bars >= 4) return "bg-emerald-500";
+  if (bars === 3) return "bg-blue-500";
+  if (bars === 2) return "bg-amber-500";
+  return "bg-rose-500";
+}
+
 export function SignalValue({
   collector,
   device,
@@ -74,6 +87,7 @@ export function SignalValue({
     : collector?.online;
   const fresh = signalFresh(at, now) && (!row || row.fresh);
   const level = signalLevel(rssi);
+  const stale = !fresh || !online;
   const q = new URLSearchParams({
     signal_collector_id: collector?.id || "",
     signal_kind: kind,
@@ -95,26 +109,38 @@ export function SignalValue({
   if (device && at && !fresh && online) state += " · 设备可能休眠";
   return (
     <div
-      className={
-        "flex min-w-0 flex-col gap-1.5 text-sm" +
-        (compact ? "text-xs" : "") +
-        (!fresh || !online ? "text-muted-foreground" : "")
-      }
+      className={cn(
+        "flex min-w-0 flex-col gap-1",
+        compact ? "text-xs" : "text-sm",
+        stale && "text-muted-foreground",
+      )}
     >
       <span className="flex flex-wrap items-center gap-2">
-        <span className="inline-flex h-5 items-end gap-0.5" aria-hidden="true">
+        <span
+          className="inline-flex h-4 items-end gap-[2.5px]"
+          aria-hidden="true"
+        >
           {[1, 2, 3, 4].map((n) => (
             <i
               key={n}
-              className={n <= level.bars ? "bg-foreground" : ""}
+              className={cn(
+                "block w-[3.5px] rounded-full transition-colors",
+                n <= level.bars
+                  ? barTone(level.bars, stale)
+                  : "bg-muted-foreground/20",
+              )}
               style={{ height: 4 + n * 3 }}
             />
           ))}
         </span>
-        <strong>{rssi == null ? "—" : `${rssi} dBm`}</strong>
-        <span>{rssi == null ? "" : level.label}</span>
+        <strong className="font-semibold tabular-nums">
+          {rssi == null ? "—" : `${rssi} dBm`}
+        </strong>
+        {rssi != null && (
+          <span className="text-muted-foreground">{level.label}</span>
+        )}
       </span>
-      {compact && (!fresh || !online) && (
+      {compact && stale && (
         <small className="block text-xs leading-5 text-muted-foreground">
           {state}
         </small>
@@ -143,12 +169,20 @@ export function SignalValue({
               {error}，显示上次数据
             </small>
           )}
-          {collector && <Link to={"/devices?" + q}>查看趋势 →</Link>}
+          {collector && (
+            <Link
+              to={"/devices?" + q}
+              className="text-xs font-medium text-primary hover:underline"
+            >
+              查看趋势 →
+            </Link>
+          )}
         </>
       )}
     </div>
   );
 }
+
 export function SignalHistory({
   collectors,
   devices,
@@ -192,7 +226,7 @@ export function SignalHistory({
   ])
     close.delete(key);
   return (
-    <Card className="space-y-4 gap-4 p-5 shadow-none scroll-mt-20">
+    <Card className="health-card scroll-mt-20 space-y-4 gap-4 p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="min-w-0 break-words text-base font-semibold tracking-tight">
           信号趋势 ·{" "}
@@ -203,7 +237,7 @@ export function SignalHistory({
             : collectors.find((c) => c.id === collector)?.name}{" "}
           · {kind === "ble" ? "蓝牙" : "Wi-Fi"}
         </h2>
-        <Button asChild variant="link">
+        <Button asChild variant="outline" size="sm" className="rounded-xl">
           <Link to={{ pathname: "/devices", search: close.toString() }}>
             收起
           </Link>
@@ -215,15 +249,15 @@ export function SignalHistory({
         </p>
       ) : (
         <>
-          <Label className="grid min-w-0 gap-2 text-sm">
+          <Label className="grid max-w-56 min-w-0 gap-1.5 text-xs text-muted-foreground">
             时间范围
             <DurationPicker value={range} onChange={setRange} />
           </Label>
-          <p className="text-sm leading-6 text-muted-foreground">
+          <p className="text-xs leading-5 text-muted-foreground">
             每 5 秒采样，保留 7 天。信号等级用于比较摆放位置。
           </p>
           {resource.error && (
-            <p role="alert" className="text-sm leading-6 text-muted-foreground">
+            <p role="alert" className="text-sm leading-6 text-destructive">
               {resource.error}
             </p>
           )}

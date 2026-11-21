@@ -10,6 +10,7 @@ import {
   TooltipComponent,
 } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
+import { useIsMobile } from "../hooks/use-mobile";
 import type { ChartSeries, Reference, TimeRange } from "../chartDomain";
 
 echarts.use([
@@ -21,7 +22,7 @@ echarts.use([
   MarkLineComponent,
   CanvasRenderer,
 ]);
-const colors = ["#2563eb", "#94a3b8", "#b45309", "#6d28d9"];
+const defaultColors = ["#2563eb", "#f43f5e", "#0d9488", "#7c3aed", "#f97316"];
 const time = (value: number) =>
   new Date(value).toLocaleString("zh-CN", {
     timeZone: "Asia/Shanghai",
@@ -35,6 +36,13 @@ const escape = (value: unknown) =>
         c
       ]!,
   );
+
+function hexToRgba(hex: string, alpha: number) {
+  const m = hex.match(/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i);
+  if (!m) return `rgba(37, 99, 235, ${alpha})`;
+  return `rgba(${parseInt(m[1], 16)}, ${parseInt(m[2], 16)}, ${parseInt(m[3], 16)}, ${alpha})`;
+}
+
 type Props = {
   series: ChartSeries[];
   unit: string;
@@ -45,6 +53,7 @@ type Props = {
   domain?: TimeRange;
   showExtrema?: boolean;
   rightAxis?: { name: string; unit: string };
+  accentColor?: string;
 };
 
 export function TimeSeriesChart({
@@ -57,7 +66,9 @@ export function TimeSeriesChart({
   domain,
   showExtrema,
   rightAxis,
+  accentColor,
 }: Props) {
+  const mobile = useIsMobile();
   const ref = useRef<HTMLDivElement>(null),
     chartRef = useRef<echarts.ECharts | null>(null);
   const legendSelection = useRef<Record<string, boolean>>({});
@@ -76,6 +87,9 @@ export function TimeSeriesChart({
   useEffect(() => {
     const chart = chartRef.current;
     if (!chart) return;
+    const palette = accentColor
+      ? [accentColor, "#64748b", ...defaultColors.filter((c) => c !== accentColor)]
+      : defaultColors;
     const times = series.flatMap((s) => s.data.map((p) => p[0]));
     const first = times.length
       ? times.reduce((a, b) => Math.min(a, b), Infinity)
@@ -94,14 +108,18 @@ export function TimeSeriesChart({
       .map((s) => ({
         s,
         data: range
-          ? s.data.filter(([time]) => time >= range.from && time <= range.to)
+          ? s.data.filter(([stamp]) => stamp >= range.from && stamp <= range.to)
           : s.data,
       }))
-      .filter(({ s, data }) => s.axis !== "right" || data.some(([, value]) => value !== null));
+      .filter(
+        ({ s, data }) =>
+          s.axis !== "right" || data.some(([, value]) => value !== null),
+      );
     const rightSeriesIds = new Set(
       plottedSeries.filter(({ s }) => s.axis === "right").map(({ s }) => s.id),
     );
     const showRightAxis = Boolean(rightAxis && rightSeriesIds.size);
+    const singleSeriesFill = plottedSeries.length === 1;
     const extremaSeries = (): LineSeriesOption => {
       let min = Infinity;
       let max = -Infinity;
@@ -109,9 +127,12 @@ export function TimeSeriesChart({
         if (legendSelection.current[name] === false) continue;
         for (const [stamp, value] of data) {
           if (
-            stamp < bounds.from || stamp > bounds.to ||
-            value === null || !Number.isFinite(value)
-          ) continue;
+            stamp < bounds.from ||
+            stamp > bounds.to ||
+            value === null ||
+            !Number.isFinite(value)
+          )
+            continue;
           min = Math.min(min, value);
           max = Math.max(max, value);
         }
@@ -128,56 +149,78 @@ export function TimeSeriesChart({
           precision: -1,
           lineStyle: { type: [5, 7], width: 1.5 },
           label: { fontSize: 10, formatter: ({ name }) => name },
-          data: min === Infinity
-            ? []
-            : [
-                {
-                  yAxis: max,
-                  name: `最高 ${max} ${unit}`,
-                  lineStyle: { color: "#dc2626" },
-                  label: { position: "insideEndTop" },
-                },
-                {
-                  yAxis: min,
-                  name: `最低 ${min} ${unit}`,
-                  lineStyle: { color: "#2563eb", dashOffset: 6 },
-                  label: { position: "insideStartTop" },
-                },
-              ],
+          data:
+            min === Infinity
+              ? []
+              : [
+                  {
+                    yAxis: max,
+                    name: `最高 ${max} ${unit}`,
+                    lineStyle: { color: "#e11d48" },
+                    label: { position: "insideEndTop", color: "#e11d48" },
+                  },
+                  {
+                    yAxis: min,
+                    name: `最低 ${min} ${unit}`,
+                    lineStyle: { color: "#2563eb", dashOffset: 6 },
+                    label: { position: "insideStartTop", color: "#2563eb" },
+                  },
+                ],
         },
       };
     };
     chart.setOption(
       {
         animation: false,
-        color: colors,
+        color: palette,
         textStyle: {
-          fontFamily: 'system-ui, "PingFang SC", sans-serif',
+          fontFamily:
+            '-apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", system-ui, sans-serif',
           fontSize: 11,
         },
-        grid: { left: 54, right: showRightAxis ? 54 : 24, top: 24, bottom: 60 },
+        grid: {
+          left: mobile ? 42 : 52,
+          right: showRightAxis ? (mobile ? 42 : 52) : mobile ? 14 : 22,
+          top: 26,
+          bottom: 58,
+        },
         legend: {
           type: "scroll",
           bottom: 0,
           itemWidth: 14,
           itemHeight: 7,
-          textStyle: { color: "#737373" },
+          icon: "roundRect",
+          textStyle: { color: "#64748b", fontSize: 11 },
         },
         tooltip: {
           trigger: "axis",
           confine: true,
           appendToBody: false,
+          backgroundColor: "rgba(255, 255, 255, 0.96)",
+          borderColor: "#e2e8f0",
+          borderWidth: 1,
+          padding: [10, 12],
+          textStyle: { color: "#0f172a", fontSize: 12 },
+          extraCssText:
+            "border-radius: 12px; box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);",
+          axisPointer: {
+            lineStyle: { color: "#cbd5e1", type: "dashed" },
+          },
           formatter: (params: any) => {
             const values = Array.isArray(params) ? params : [params];
             const stamp = values[0]?.value?.[0];
             return (
-              `<strong>${escape(memberName || label)}</strong><br/>${escape(stamp ? time(stamp) : "")}<br/>` +
+              `<div style="font-weight:600;margin-bottom:2px;color:#0f172a">${escape(memberName || label)}</div>` +
+              `<div style="font-size:11px;color:#64748b;margin-bottom:6px">${escape(stamp ? time(stamp) : "")}</div>` +
               values
                 .map((p: any) => {
-                  const seriesUnit = rightAxis && rightSeriesIds.has(p.seriesId) ? rightAxis.unit : unit;
-                  return `${p.marker}${escape(p.seriesName)}：${p.value?.[1] == null ? "—" : escape(p.value[1])} ${escape(seriesUnit)}`;
+                  const seriesUnit =
+                    rightAxis && rightSeriesIds.has(p.seriesId)
+                      ? rightAxis.unit
+                      : unit;
+                  return `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;line-height:1.6"><span>${p.marker}${escape(p.seriesName)}</span><strong style="font-variant-numeric:tabular-nums">${p.value?.[1] == null ? "—" : escape(p.value[1])} ${escape(seriesUnit)}</strong></div>`;
                 })
-                .join("<br/>")
+                .join("")
             );
           },
         },
@@ -185,11 +228,13 @@ export function TimeSeriesChart({
           type: "time",
           min: bounds.from,
           max: bounds.to,
-          splitNumber: 3,
-          axisLine: { lineStyle: { color: "#d4d4d4" } },
+          splitNumber: mobile ? 3 : 4,
+          axisLine: { lineStyle: { color: "#e2e8f0" } },
+          axisTick: { show: false },
           axisLabel: {
             hideOverlap: true,
-            color: "#737373",
+            color: "#64748b",
+            margin: 10,
             formatter: (value: number) =>
               new Date(value).toLocaleDateString("zh-CN", {
                 timeZone: "Asia/Shanghai",
@@ -210,14 +255,15 @@ export function TimeSeriesChart({
             id: "primary",
             type: "value",
             name: unit,
+            nameTextStyle: { color: "#94a3b8", padding: [0, 0, 0, -8] },
             position: "left",
             scale: true,
             axisLabel: {
-              color: "#737373",
+              color: "#64748b",
               formatter: (value: number) =>
                 value.toLocaleString("zh-CN", { maximumFractionDigits: 1 }),
             },
-            splitLine: { lineStyle: { color: "#f0f0f0" } },
+            splitLine: { lineStyle: { color: "#eef2f6", type: "dashed" } },
             min: referenceValues.length
               ? (value: { min: number }) =>
                   Math.floor(Math.min(value.min, ...referenceValues) - 1)
@@ -227,73 +273,103 @@ export function TimeSeriesChart({
                   Math.ceil(Math.max(value.max, ...referenceValues) + 1)
               : undefined,
           },
-          ...(rightAxis ? [{
-            id: "secondary",
-            type: "value",
-            name: rightAxis.name,
-            position: "right",
-            show: showRightAxis,
-            scale: true,
-            minInterval: 0.01,
-            axisLabel: {
-              color: "#737373",
-              formatter: (value: number) =>
-                value.toLocaleString("zh-CN", { maximumFractionDigits: 2 }),
-            },
-            splitLine: { show: false },
-          }] : []),
-        ],
-        series: plottedSeries.map<LineSeriesOption>(({ s, data }, index) => ({
-          id: s.id,
-          name: s.name,
-          type: "line",
-          yAxisIndex: rightAxis && s.axis === "right" ? 1 : 0,
-          data,
-          showSymbol: s.data.length < 80,
-          symbolSize: 6,
-          connectNulls: false,
-          smooth: 0.35,
-          smoothMonotone: "x",
-          itemStyle: { color: s.color || colors[index % colors.length] },
-          lineStyle: {
-            width: 2,
-            type: s.lineType || "solid",
-            cap: "round",
-            join: "round",
-          },
-          ...(index === 0 && reference?.band
-            ? {
-                markArea: {
-                  silent: true,
-                  itemStyle: { color: "rgba(34,197,94,.07)" },
-                  data: [
-                    [
-                      { yAxis: reference.band[0] },
-                      { yAxis: reference.band[1] },
-                    ] as [{ yAxis: number }, { yAxis: number }],
-                  ],
-                },
-              }
-            : {}),
-          ...(index === 0 && reference?.lines
-            ? {
-                markLine: {
-                  silent: true,
-                  symbol: "none",
-                  lineStyle: { type: "dashed" as const, color: "#a3a3a3" },
-                  label: {
-                    position: "insideEndTop" as const,
-                    fontSize: 10,
-                    formatter: (p: any) => p.name,
+          ...(rightAxis
+            ? [
+                {
+                  id: "secondary",
+                  type: "value",
+                  name: rightAxis.name,
+                  nameTextStyle: { color: "#94a3b8" },
+                  position: "right" as const,
+                  show: showRightAxis,
+                  scale: true,
+                  minInterval: 0.01,
+                  axisLabel: {
+                    color: "#64748b",
+                    formatter: (value: number) =>
+                      value.toLocaleString("zh-CN", {
+                        maximumFractionDigits: 2,
+                      }),
                   },
-                  data: reference.lines.map((line) => ({
-                    yAxis: line.value,
-                    name: line.label,
-                  })),
+                  splitLine: { show: false },
                 },
-              }
-            : {}),
-        })).concat(showExtrema ? [extremaSeries()] : []),
+              ]
+            : []),
+        ],
+        series: plottedSeries
+          .map<LineSeriesOption>(({ s, data }, index) => {
+            const lineColor = s.color || palette[index % palette.length];
+            return {
+              id: s.id,
+              name: s.name,
+              type: "line",
+              yAxisIndex: rightAxis && s.axis === "right" ? 1 : 0,
+              data,
+              showSymbol: s.data.length < 80,
+              symbolSize: 6,
+              connectNulls: false,
+              smooth: 0.35,
+              smoothMonotone: "x",
+              itemStyle: { color: lineColor },
+              lineStyle: {
+                width: 2.25,
+                type: s.lineType || "solid",
+                cap: "round",
+                join: "round",
+              },
+              ...(singleSeriesFill
+                ? {
+                    areaStyle: {
+                      color: {
+                        type: "linear" as const,
+                        x: 0,
+                        y: 0,
+                        x2: 0,
+                        y2: 1,
+                        colorStops: [
+                          { offset: 0, color: hexToRgba(lineColor, 0.14) },
+                          { offset: 1, color: hexToRgba(lineColor, 0.01) },
+                        ],
+                      },
+                    },
+                  }
+                : {}),
+              ...(index === 0 && reference?.band
+                ? {
+                    markArea: {
+                      silent: true,
+                      itemStyle: { color: "rgba(16, 185, 129, 0.08)" },
+                      data: [
+                        [
+                          { yAxis: reference.band[0] },
+                          { yAxis: reference.band[1] },
+                        ] as [{ yAxis: number }, { yAxis: number }],
+                      ],
+                    },
+                  }
+                : {}),
+              ...(index === 0 && reference?.lines
+                ? {
+                    markLine: {
+                      silent: true,
+                      symbol: "none",
+                      lineStyle: { type: "dashed" as const, color: "#94a3b8" },
+                      label: {
+                        position: "insideEndTop" as const,
+                        fontSize: 10,
+                        color: "#64748b",
+                        formatter: (p: any) => p.name,
+                      },
+                      data: reference.lines.map((line) => ({
+                        yAxis: line.value,
+                        name: line.label,
+                      })),
+                    },
+                  }
+                : {}),
+            };
+          })
+          .concat(showExtrema ? [extremaSeries()] : []),
       },
       { replaceMerge: ["series", "yAxis"], silent: true },
     );
@@ -315,6 +391,8 @@ export function TimeSeriesChart({
     reference,
     showExtrema,
     rightAxis,
+    accentColor,
+    mobile,
     range?.from,
     range?.to,
     domain?.from,
@@ -323,7 +401,7 @@ export function TimeSeriesChart({
   return (
     <div
       ref={ref}
-      className="h-72 w-full min-w-0 sm:h-80"
+      className="h-68 w-full min-w-0 sm:h-80"
       role="img"
       aria-label={label}
     />

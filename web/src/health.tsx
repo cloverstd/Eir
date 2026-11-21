@@ -20,10 +20,18 @@ import { Link, useLocation } from "react-router";
 import { useQueryState, useRouteNavigation } from "./routing";
 import { routeForPath } from "./routingDomain";
 import { useEffect, useMemo, useState } from "react";
+import {
+  ArrowLeft,
+  ChevronRight,
+  FileText,
+  Plus,
+  UserPlus,
+} from "lucide-react";
 import { TimeSeriesChart } from "./components/TimeSeriesChart";
 import { Tabs, TabsList, TabsTrigger } from "./components/ui/tabs";
 import { ProfileFields } from "./body";
 import { memberProfile } from "./bodyDomain";
+import { memberAvatarStyle, memberInitial } from "./lib/metricTheme";
 import {
   metricNames,
   historyNames,
@@ -31,6 +39,7 @@ import {
   healthQuery,
   memberAge,
 } from "./healthDomain";
+
 type Row = Record<string, any>;
 type Props = {
   members: Row[];
@@ -44,6 +53,7 @@ type Props = {
   action: (fn: () => Promise<unknown>, message?: string) => Promise<void>;
   busy: boolean;
 };
+
 const date = (value: any) =>
   value
     ? new Date(value).toLocaleString("zh-CN", {
@@ -51,6 +61,7 @@ const date = (value: any) =>
         hour12: false,
       })
     : "时间未知";
+
 const fields = (e: React.FormEvent<HTMLFormElement>) => {
   e.preventDefault();
   return Object.fromEntries(new FormData(e.currentTarget)) as Record<
@@ -58,6 +69,7 @@ const fields = (e: React.FormEvent<HTMLFormElement>) => {
     string
   >;
 };
+
 function Pages({
   page,
   total,
@@ -68,8 +80,9 @@ function Pages({
   setPage: (n: number) => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center justify-end gap-3 py-2 text-xs text-muted-foreground">
+    <div className="flex flex-wrap items-center justify-end gap-3 pt-2 text-xs text-muted-foreground">
       <Button
+        size="sm"
         disabled={page === 1}
         onClick={() => setPage(page - 1)}
         variant="outline"
@@ -80,6 +93,7 @@ function Pages({
         第 {page} 页 · 共 {total} 条
       </span>
       <Button
+        size="sm"
         disabled={page * 50 >= total}
         onClick={() => setPage(page + 1)}
         variant="outline"
@@ -89,6 +103,7 @@ function Pages({
     </div>
   );
 }
+
 function BasicForm({
   member,
   onSave,
@@ -131,10 +146,13 @@ function BasicForm({
           defaultValue={member?.notes || ""}
         />
       </Label>
-      <Button disabled={busy}>保存成员资料</Button>
+      <Button className="rounded-xl" disabled={busy}>
+        保存成员资料
+      </Button>
     </form>
   );
 }
+
 function MetricChart({ rows }: { rows: Row[] }) {
   const times = [...new Set(rows.map((r) => r.time))].sort();
   const groups = [
@@ -186,6 +204,7 @@ function MetricChart({ rows }: { rows: Row[] }) {
     />
   );
 }
+
 export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
   const [historyFormKey, setHistoryFormKey] = useState(0),
     [metricFormKey, setMetricFormKey] = useState(0);
@@ -265,6 +284,7 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
     period,
     queryNow,
   );
+
   useEffect(() => {
     const controller = new AbortController();
     api("health/metrics", "GET", undefined, controller.signal)
@@ -276,6 +296,7 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
       });
     return () => controller.abort();
   }, [api]);
+
   useEffect(() => {
     if (!selected) return;
     let active = true;
@@ -293,6 +314,7 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
       controller.abort();
     };
   }, [selected, refresh, historySearch, api]);
+
   useEffect(() => {
     if (!selected) return;
     let active = true;
@@ -357,6 +379,7 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
     historyKind,
     statsPage,
   ]);
+
   const open = (id: string) => {
     navigation.go(`/members/${id}/basic`);
     setPreview(null);
@@ -365,28 +388,44 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
     setEditDocument(null);
     setCreating(false);
   };
+
   if (selected && !member)
     return (
-      <Card className="gap-4 p-5 shadow-none">
+      <Card className="health-card gap-4 p-5">
         <h2 className="min-w-0 break-words text-base font-semibold tracking-tight">
           成员未找到
         </h2>
-        <Link to="/members">返回成员列表</Link>
+        <div>
+          <Button asChild variant="outline">
+            <Link to="/members">返回成员列表</Link>
+          </Button>
+        </div>
       </Card>
     );
+
   if (!member)
     return (
-      <>
+      <div className="space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="min-w-0 break-words text-base font-semibold tracking-tight">
             家人的健康档案
           </h2>
-          <Button onClick={() => setCreating(!creating)}>
-            {creating ? "收起" : "添加成员"}
+          <Button
+            className="rounded-xl"
+            onClick={() => setCreating(!creating)}
+          >
+            {creating ? (
+              "收起"
+            ) : (
+              <>
+                <UserPlus className="size-4" />
+                添加成员
+              </>
+            )}
           </Button>
         </div>
         {creating && (
-          <Card className="gap-4 p-5 shadow-none">
+          <Card className="health-card gap-4 p-5">
             <h2 className="min-w-0 break-words text-base font-semibold tracking-tight">
               添加家庭成员
             </h2>
@@ -401,31 +440,73 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
             />
           </Card>
         )}
-        <div className="grid min-w-0 gap-4 xl:grid-cols-2">
-          {members.map((m) => (
-            <Card className="gap-4 p-5 shadow-none" key={m.id}>
-              <h2 className="min-w-0 break-words text-base font-semibold tracking-tight">
-                {m.name}
-              </h2>
-              <p className="text-sm leading-6 text-muted-foreground">
-                {memberAge(m)} · {m.blood_type || "血型未填写"}
-              </p>
-              <p className="text-sm leading-6 text-muted-foreground">
-                {m.height_cm ? `${m.height_cm} cm` : "身高未填写"}
-              </p>
-              <Button asChild variant="outline">
-                <Link to={`/members/${m.id}/basic`}>查看健康档案</Link>
+        <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {members.map((m, index) => (
+            <Card
+              className="health-card group gap-4 p-5 transition-shadow hover:shadow-md"
+              key={m.id}
+            >
+              <div className="flex items-start gap-3.5">
+                <span
+                  className={`flex size-12 shrink-0 items-center justify-center rounded-2xl text-lg font-bold ring-1 ${memberAvatarStyle(index)}`}
+                >
+                  {memberInitial(m.name)}
+                </span>
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <h2 className="min-w-0 truncate text-base font-semibold tracking-tight text-foreground">
+                    {m.name}
+                  </h2>
+                  <div className="flex flex-wrap gap-1.5">
+                    <Badge
+                      variant="secondary"
+                      className="rounded-full text-xs font-normal"
+                    >
+                      {memberAge(m)}
+                    </Badge>
+                    <Badge
+                      variant="secondary"
+                      className="rounded-full text-xs font-normal"
+                    >
+                      {m.height_cm ? `${m.height_cm} cm` : "身高未填写"}
+                    </Badge>
+                    {m.blood_type && (
+                      <Badge
+                        variant="outline"
+                        className="rounded-full text-xs font-normal"
+                      >
+                        {m.blood_type} 型
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <Button
+                asChild
+                variant="outline"
+                className="w-full justify-between rounded-xl"
+              >
+                <Link to={`/members/${m.id}/basic`}>
+                  <span>查看健康档案</span>
+                  <ChevronRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+                </Link>
               </Button>
             </Card>
           ))}
         </div>
         {!members.length && (
-          <p className="text-sm leading-6 text-muted-foreground">
-            先添加家人，再补充健康资料与测量记录。
-          </p>
+          <Card className="health-card items-center gap-3 p-8 text-center">
+            <p className="text-sm leading-6 text-muted-foreground">
+              先添加家人，再补充健康资料与测量记录。
+            </p>
+            <Button className="rounded-xl" onClick={() => setCreating(true)}>
+              <Plus className="size-4" />
+              添加第一位成员
+            </Button>
+          </Card>
         )}
-      </>
+      </div>
     );
+
   const metric = metrics.find(
     (m) => m.kind === (editMetric?.kind || newMetric),
   );
@@ -447,55 +528,77 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
       }
     }, "医疗文件已保存");
   };
+
   return (
-    <>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="min-w-0 break-words text-base font-semibold tracking-tight">
-            {member.name}的健康档案
-          </h2>
-          <p className="text-sm leading-6 text-muted-foreground">
-            {memberAge(member)}
-          </p>
+    <div className="space-y-5">
+      <Card className="health-card gap-4 p-4 sm:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3.5">
+            <span
+              className={`flex size-12 shrink-0 items-center justify-center rounded-2xl text-lg font-bold ring-1 ${memberAvatarStyle(member.id)}`}
+            >
+              {memberInitial(member.name)}
+            </span>
+            <div className="min-w-0 space-y-1">
+              <h2 className="min-w-0 break-words text-lg font-semibold tracking-tight">
+                {member.name}的健康档案
+              </h2>
+              <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                <span>{memberAge(member)}</span>
+                {member.height_cm && <span>· {member.height_cm} cm</span>}
+                {member.blood_type && <span>· {member.blood_type} 型</span>}
+              </div>
+            </div>
+          </div>
+          <Button asChild variant="outline" size="sm" className="rounded-xl">
+            <Link to="/members">
+              <ArrowLeft className="size-3.5" />
+              返回成员列表
+            </Link>
+          </Button>
         </div>
-        <Button asChild variant="outline">
-          <Link to="/members">返回成员列表</Link>
-        </Button>
-      </div>
-      <Tabs
-        value={section}
-        onValueChange={(value) =>
-          navigation.go(`/members/${selected}/${value}`)
-        }
-      >
-        <div className="max-w-full overflow-x-auto">
-          <TabsList className="w-max">
-            {[
-              ["basic", "基本资料"],
-              ["history", "健康经历"],
-              ["metrics", "身体指标"],
-              ["documents", "医疗文件"],
-            ].map(([id, label]) => (
-              <TabsTrigger key={id} value={id}>
-                {label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </div>
-      </Tabs>
+        <Tabs
+          value={section}
+          onValueChange={(value) =>
+            navigation.go(`/members/${selected}/${value}`)
+          }
+        >
+          <div className="no-scrollbar max-w-full overflow-x-auto">
+            <TabsList className="h-10 w-max rounded-xl bg-muted/80 p-1">
+              {[
+                ["basic", "基本资料"],
+                ["history", "健康经历"],
+                ["metrics", "身体指标"],
+                ["documents", "医疗文件"],
+              ].map(([id, label]) => (
+                <TabsTrigger key={id} value={id} className="rounded-lg px-4">
+                  {label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </div>
+        </Tabs>
+      </Card>
+
       {error && (
-        <p className="text-sm leading-6 text-destructive" role="alert">
+        <p
+          className="rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm leading-6 text-destructive"
+          role="alert"
+        >
           {error}
         </p>
       )}
+
       {section === "basic" && (
-        <Card className="gap-4 p-5 shadow-none">
-          <h2 className="min-w-0 break-words text-base font-semibold tracking-tight">
-            基本资料
-          </h2>
-          <p className="text-sm leading-6 text-muted-foreground">
-            出生年月可单独填写；完整日期用于更精确的年龄计算。修改资料不自动改变历史体脂计算快照。
-          </p>
+        <Card className="health-card gap-4 p-5">
+          <div className="space-y-1">
+            <h2 className="min-w-0 break-words text-base font-semibold tracking-tight">
+              基本资料
+            </h2>
+            <p className="text-xs leading-5 text-muted-foreground">
+              出生年月可单独填写；完整日期用于更精确的年龄计算。修改资料不自动改变历史体脂计算快照。
+            </p>
+          </div>
           <BasicForm
             key={member.id}
             member={member}
@@ -504,9 +607,10 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
           />
         </Card>
       )}
+
       {section === "history" && (
         <>
-          <Card className="gap-4 p-5 shadow-none">
+          <Card className="health-card gap-4 p-5">
             <h2 className="min-w-0 break-words text-base font-semibold tracking-tight">
               {editHistory ? "编辑健康经历" : "补充健康经历"}
             </h2>
@@ -653,7 +757,9 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
                 />
               </Label>
               <div className="flex flex-wrap items-start gap-2">
-                <Button disabled={busy}>保存健康经历</Button>
+                <Button className="rounded-xl" disabled={busy}>
+                  保存健康经历
+                </Button>
                 {editHistory && (
                   <Button
                     type="button"
@@ -666,12 +772,12 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
               </div>
             </form>
           </Card>
-          <Card className="gap-4 p-5 shadow-none">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+          <Card className="health-card gap-4 p-5">
+            <div className="flex flex-wrap items-end justify-between gap-3">
               <h2 className="min-w-0 break-words text-base font-semibold tracking-tight">
                 健康经历
               </h2>
-              <Label className="grid min-w-0 gap-2 text-sm">
+              <Label className="grid w-full min-w-0 gap-1.5 text-xs text-muted-foreground sm:w-44">
                 筛选类型
                 <SelectField
                   value={historyKind}
@@ -689,83 +795,104 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
                 </SelectField>
               </Label>
             </div>
-            {history.map((h) => (
-              <article
-                className="space-y-3 border-b py-5 last:border-0"
-                key={h.id}
-              >
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <h3 className="text-sm font-semibold">{h.title}</h3>
-                  <Badge className="text-xs">{historyNames[h.kind]}</Badge>
-                </div>
-                <p className="text-sm leading-6 text-muted-foreground">
-                  {h.occurred_on?.slice(0, 10) || "时间未注明"} ·{" "}
-                  {
-                    (
-                      {
-                        active: "目前仍有",
-                        resolved: "已结束",
-                        unknown: "状态未注明",
-                      } as Row
-                    )[h.status]
-                  }
-                </p>
-                <p className="text-sm leading-6 text-muted-foreground">
-                  {h.notes}
-                </p>
-                <dl className="grid grid-cols-[auto_1fr] [&>div]:contents gap-x-4 gap-y-2 text-sm">
-                  {Object.entries(h.details || {}).map(([k, v]) => (
-                    <div key={k}>
-                      <dt className="text-muted-foreground">
+            <div className="divide-y divide-border/70">
+              {history.map((h) => (
+                <article className="space-y-3 py-4 first:pt-1 last:pb-1" key={h.id}>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="text-sm font-semibold text-foreground">
+                      {h.title}
+                    </h3>
+                    <div className="flex items-center gap-1.5">
+                      <Badge
+                        variant="secondary"
+                        className="rounded-full text-xs font-normal"
+                      >
+                        {historyNames[h.kind]}
+                      </Badge>
+                      <Badge
+                        variant="outline"
+                        className="rounded-full text-xs font-normal text-muted-foreground"
+                      >
                         {
                           (
                             {
-                              reaction: "反应",
-                              severity: "程度",
-                              dose: "剂量",
-                              frequency: "频次",
-                              relative: "亲属",
-                              ended_on: "结束日期",
+                              active: "目前仍有",
+                              resolved: "已结束",
+                              unknown: "状态未注明",
                             } as Row
-                          )[k]
+                          )[h.status]
                         }
-                      </dt>
-                      <dd className="min-w-0 break-words">{String(v)}</dd>
+                      </Badge>
                     </div>
-                  ))}
-                </dl>
-                <div className="flex flex-wrap items-start gap-2">
-                  <Button
-                    onClick={() => {
-                      setEditHistory(h);
-                      setNewHistory(h.kind);
-                    }}
-                    variant="outline"
-                  >
-                    编辑经历
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      navigation.go(`/members/${selected}/documents`);
-                      setEditDocument(null);
-                      setLinkedHistory(h.id);
-                    }}
-                    variant="outline"
-                  >
-                    管理关联文件
-                  </Button>
-                  <ConfirmAction
-                    label="删除经历"
-                    description={`删除“${h.title}”？关联文件会保留。`}
-                    busy={busy}
-                    action={action}
-                    run={() =>
-                      api(`members/${selected}/history/${h.id}`, "DELETE")
-                    }
-                  />
-                </div>
-              </article>
-            ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {h.occurred_on?.slice(0, 10) || "时间未注明"}
+                  </p>
+                  {h.notes && (
+                    <p className="text-sm leading-6 text-foreground/85">
+                      {h.notes}
+                    </p>
+                  )}
+                  {Object.keys(h.details || {}).length > 0 && (
+                    <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 rounded-xl bg-muted/45 px-3.5 py-2.5 text-xs [&>div]:contents">
+                      {Object.entries(h.details || {}).map(([k, v]) => (
+                        <div key={k}>
+                          <dt className="text-muted-foreground">
+                            {
+                              (
+                                {
+                                  reaction: "反应",
+                                  severity: "程度",
+                                  dose: "剂量",
+                                  frequency: "频次",
+                                  relative: "亲属",
+                                  ended_on: "结束日期",
+                                } as Row
+                              )[k]
+                            }
+                          </dt>
+                          <dd className="min-w-0 break-words font-medium">
+                            {String(v)}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                  )}
+                  <div className="flex flex-wrap items-start gap-2 pt-1">
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        setEditHistory(h);
+                        setNewHistory(h.kind);
+                      }}
+                      variant="outline"
+                    >
+                      编辑经历
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        navigation.go(`/members/${selected}/documents`);
+                        setEditDocument(null);
+                        setLinkedHistory(h.id);
+                      }}
+                      variant="outline"
+                    >
+                      管理关联文件
+                    </Button>
+                    <ConfirmAction
+                      label="删除经历"
+                      description={`删除“${h.title}”？关联文件会保留。`}
+                      busy={busy}
+                      action={action}
+                      run={() =>
+                        api(`members/${selected}/history/${h.id}`, "DELETE")
+                      }
+                    />
+                  </div>
+                </article>
+              ))}
+            </div>
             {!history.length && (
               <p className="text-sm leading-6 text-muted-foreground">
                 尚未记录。未填写不代表没有相关病史。
@@ -779,9 +906,10 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
           </Card>
         </>
       )}
+
       {section === "metrics" && (
         <>
-          <Card className="gap-4 p-5 shadow-none">
+          <Card className="health-card gap-4 p-5">
             <h2 className="min-w-0 break-words text-base font-semibold tracking-tight">
               {editMetric ? "编辑手动指标" : "记录身体指标"}
             </h2>
@@ -883,7 +1011,9 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
                 />
               </Label>
               <div className="flex flex-wrap items-start gap-2">
-                <Button disabled={busy}>保存指标</Button>
+                <Button className="rounded-xl" disabled={busy}>
+                  保存指标
+                </Button>
                 {editMetric && (
                   <Button
                     type="button"
@@ -896,12 +1026,12 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
               </div>
             </form>
           </Card>
-          <Card className="gap-4 p-5 shadow-none">
+          <Card className="health-card gap-4 p-5">
             <h2 className="min-w-0 break-words text-base font-semibold tracking-tight">
               身体指标趋势
             </h2>
-            <div className="flex flex-wrap items-end gap-3 [&>label]:w-full [&>label]:sm:w-44">
-              <Label className="grid min-w-0 gap-2 text-sm">
+            <div className="grid grid-cols-2 items-end gap-3 sm:flex sm:flex-wrap [&>label]:sm:w-44">
+              <Label className="grid min-w-0 gap-1.5 text-xs text-muted-foreground">
                 指标
                 <SelectField
                   value={kind}
@@ -914,7 +1044,7 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
                   ))}
                 </SelectField>
               </Label>
-              <Label className="grid min-w-0 gap-2 text-sm">
+              <Label className="grid min-w-0 gap-1.5 text-xs text-muted-foreground">
                 来源
                 <SelectField
                   value={source}
@@ -925,7 +1055,7 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
                   <option value="device">设备采集</option>
                 </SelectField>
               </Label>
-              <Label className="grid min-w-0 gap-2 text-sm sm:col-span-2">
+              <Label className="col-span-2 grid min-w-0 gap-1.5 text-xs text-muted-foreground sm:w-auto">
                 时间范围
                 <DateRangePicker
                   period={period}
@@ -938,7 +1068,7 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
                   }}
                 />
               </Label>
-              <Label className="grid min-w-0 gap-2 text-sm">
+              <Label className="col-span-2 grid min-w-0 gap-1.5 text-xs text-muted-foreground sm:col-span-1">
                 汇总
                 <SelectField
                   value={group}
@@ -950,7 +1080,7 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
                 </SelectField>
               </Label>
             </div>
-            <p className="text-sm leading-6 text-muted-foreground">
+            <p className="text-xs leading-5 text-muted-foreground">
               BMI
               根据体重和当时已记录的身高计算；无历史身高时使用记录当时的成员身高，保存快照后不随资料修改变化。估算值会单独标注。
             </p>
@@ -958,6 +1088,7 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
             {statsTotal > 200 && (
               <div className="flex flex-wrap items-center justify-end gap-3 py-2 text-xs text-muted-foreground">
                 <Button
+                  size="sm"
                   disabled={statsPage === 1}
                   onClick={() => setStatsPage(statsPage - 1)}
                   variant="outline"
@@ -968,6 +1099,7 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
                   统计第 {statsPage} 页 · 共 {statsTotal} 组
                 </span>
                 <Button
+                  size="sm"
                   disabled={statsPage * 200 >= statsTotal}
                   onClick={() => setStatsPage(statsPage + 1)}
                   variant="outline"
@@ -979,7 +1111,7 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
             <div className="min-w-0 max-w-full overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow>
+                  <TableRow className="bg-muted/35 hover:bg-muted/35">
                     <TableHead>测量时间</TableHead>
                     <TableHead>数值</TableHead>
                     <TableHead>来源与说明</TableHead>
@@ -989,10 +1121,10 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
                 <TableBody>
                   {rows.map((o) => (
                     <TableRow key={o.id}>
-                      <TableCell className="align-top">
+                      <TableCell className="align-top text-xs sm:text-sm">
                         {date(o.measured_at)}
                       </TableCell>
-                      <TableCell className="align-top">
+                      <TableCell className="align-top font-semibold tabular-nums">
                         {Number(o.value).toFixed(2)}
                         {o.value_secondary != null
                           ? ` / ${Number(o.value_secondary).toFixed(2)}`
@@ -1000,19 +1132,28 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
                         {o.unit}
                       </TableCell>
                       <TableCell className="align-top">
-                        {o.source === "device" ? "设备采集" : "手动记录"}
-                        {o.estimated ? " · 估算" : ""}
-                        {o.age_approximate ? " · 年龄近似" : ""}
-                        <small className="block text-xs leading-5 text-muted-foreground">
-                          {o.notes}
-                        </small>
+                        <Badge
+                          variant="secondary"
+                          className="rounded-md text-xs font-normal"
+                        >
+                          {o.source === "device" ? "设备采集" : "手动记录"}
+                          {o.estimated ? " · 估算" : ""}
+                          {o.age_approximate ? " · 年龄近似" : ""}
+                        </Badge>
+                        {o.notes && (
+                          <small className="mt-1 block text-xs leading-5 text-muted-foreground">
+                            {o.notes}
+                          </small>
+                        )}
                       </TableCell>
                       <TableCell className="align-top">
                         {o.source === "manual" && !o.estimated && (
                           <div className="flex flex-wrap items-start gap-2">
                             <Button
+                              size="sm"
                               onClick={() => setEditMetric(o)}
                               variant="link"
+                              className="h-8 px-2"
                             >
                               编辑指标
                             </Button>
@@ -1045,9 +1186,10 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
           </Card>
         </>
       )}
+
       {section === "documents" && (
         <>
-          <Card className="gap-4 p-5 shadow-none">
+          <Card className="health-card gap-4 p-5">
             <h2 className="min-w-0 break-words text-base font-semibold tracking-tight">
               {editDocument ? "编辑文件资料" : "添加医疗文件"}
             </h2>
@@ -1147,7 +1289,7 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
                 />
               </Label>
               <div className="flex flex-wrap items-start gap-2">
-                <Button disabled={busy}>
+                <Button className="rounded-xl" disabled={busy}>
                   {busy ? "正在保存…" : "保存医疗文件"}
                 </Button>
                 {editDocument && (
@@ -1161,80 +1303,102 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
                 )}
               </div>
             </form>
-            <p className="text-sm leading-6 text-muted-foreground">
+            <p className="text-xs leading-5 text-muted-foreground">
               原件完整保留；PDF 可选取的文字供 AI
               读取。照片和扫描件通过页面预览读取。
             </p>
           </Card>
-          <Card className="gap-4 p-5 shadow-none">
+          <Card className="health-card gap-4 p-5">
             <h2 className="min-w-0 break-words text-base font-semibold tracking-tight">
               医疗文件
             </h2>
-            {documents.map((d) => (
-              <article
-                className="space-y-3 border-b py-5 last:border-0"
-                key={d.id}
-              >
-                <h3 className="text-sm font-semibold">{d.title}</h3>
-                <p className="text-sm leading-6 text-muted-foreground">
-                  {documentNames[d.category] || d.category} ·{" "}
-                  {d.recorded_on?.slice(0, 10) || "日期未注明"} ·{" "}
-                  {d.institution || "机构未注明"}
-                </p>
-                <p className="text-sm leading-6 text-muted-foreground">
-                  {d.summary}
-                </p>
-                <small className="block text-xs leading-5 text-muted-foreground">
-                  {d.filename} · {(d.size / 1048576).toFixed(2)} MiB ·{" "}
-                  {d.page_count} 页
-                </small>
-                <div className="flex flex-wrap items-start gap-2">
-                  <Button
-                    onClick={() => {
-                      if (isOffline()) {
-                        setError("医疗文件原件未缓存在本机，请联网后预览");
-                        return;
-                      }
-                      setPreview(d);
-                      setPreviewPage(1);
-                      setText("");
-                    }}
-                    variant="outline"
-                  >
-                    预览文件
-                  </Button>
-                  <Button asChild variant="outline">
-                    <a
-                      onClick={(e) => {
+            <div className="divide-y divide-border/70">
+              {documents.map((d) => (
+                <article className="space-y-3 py-4 first:pt-1 last:pb-1" key={d.id}>
+                  <div className="flex items-start gap-3">
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                      <FileText className="size-4" />
+                    </span>
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="text-sm font-semibold text-foreground">
+                          {d.title}
+                        </h3>
+                        <Badge
+                          variant="secondary"
+                          className="rounded-full text-xs font-normal"
+                        >
+                          {documentNames[d.category] || d.category}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {d.recorded_on?.slice(0, 10) || "日期未注明"} ·{" "}
+                        {d.institution || "机构未注明"}
+                      </p>
+                    </div>
+                  </div>
+                  {d.summary && (
+                    <p className="text-sm leading-6 text-foreground/85">
+                      {d.summary}
+                    </p>
+                  )}
+                  <small className="block text-xs leading-5 text-muted-foreground">
+                    {d.filename} · {(d.size / 1048576).toFixed(2)} MiB ·{" "}
+                    {d.page_count} 页
+                  </small>
+                  <div className="flex flex-wrap items-start gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => {
                         if (isOffline()) {
-                          e.preventDefault();
-                          setError("医疗文件原件需要联网下载");
+                          setError("医疗文件原件未缓存在本机，请联网后预览");
+                          return;
                         }
+                        setPreview(d);
+                        setPreviewPage(1);
+                        setText("");
                       }}
-                      href={`/api/v1/documents/${d.id}/download`}
+                      variant="outline"
                     >
-                      下载原件
-                    </a>
-                  </Button>
-                  <Button onClick={() => setEditDocument(d)} variant="outline">
-                    编辑文件信息
-                  </Button>
-                  <ConfirmAction
-                    label="删除文件"
-                    description={`删除“${d.title}”及原件？`}
-                    busy={busy}
-                    action={action}
-                    run={async () => {
-                      await api(
-                        `members/${selected}/documents/${d.id}`,
-                        "DELETE",
-                      );
-                      if (preview?.id === d.id) setPreview(null);
-                    }}
-                  />
-                </div>
-              </article>
-            ))}
+                      预览文件
+                    </Button>
+                    <Button size="sm" asChild variant="outline">
+                      <a
+                        onClick={(e) => {
+                          if (isOffline()) {
+                            e.preventDefault();
+                            setError("医疗文件原件需要联网下载");
+                          }
+                        }}
+                        href={`/api/v1/documents/${d.id}/download`}
+                      >
+                        下载原件
+                      </a>
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => setEditDocument(d)}
+                      variant="outline"
+                    >
+                      编辑文件信息
+                    </Button>
+                    <ConfirmAction
+                      label="删除文件"
+                      description={`删除“${d.title}”及原件？`}
+                      busy={busy}
+                      action={action}
+                      run={async () => {
+                        await api(
+                          `members/${selected}/documents/${d.id}`,
+                          "DELETE",
+                        );
+                        if (preview?.id === d.id) setPreview(null);
+                      }}
+                    />
+                  </div>
+                </article>
+              ))}
+            </div>
             {!documents.length && (
               <p className="text-sm leading-6 text-muted-foreground">
                 暂无医疗文件。
@@ -1247,22 +1411,27 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
             />
           </Card>
           {preview && (
-            <Card className="gap-4 p-5 shadow-none">
+            <Card className="health-card gap-4 p-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <h2 className="min-w-0 break-words text-base font-semibold tracking-tight">
                   {preview.title} · 第 {previewPage} / {preview.page_count} 页
                 </h2>
-                <Button onClick={() => setPreview(null)} variant="outline">
+                <Button
+                  size="sm"
+                  onClick={() => setPreview(null)}
+                  variant="outline"
+                >
                   关闭预览
                 </Button>
               </div>
               <img
-                className="mx-auto block h-auto max-w-full rounded-lg border"
+                className="mx-auto block h-auto max-w-full rounded-xl border"
                 src={`/api/v1/documents/${preview.id}/pages/${previewPage}`}
                 alt={`${preview.title}第${previewPage}页`}
               />
               <div className="flex flex-wrap items-start gap-2">
                 <Button
+                  size="sm"
                   disabled={previewPage <= 1}
                   onClick={() => setPreviewPage(previewPage - 1)}
                   variant="outline"
@@ -1270,6 +1439,7 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
                   上一页
                 </Button>
                 <Button
+                  size="sm"
                   disabled={previewPage >= preview.page_count}
                   onClick={() => setPreviewPage(previewPage + 1)}
                   variant="outline"
@@ -1277,6 +1447,7 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
                   下一页
                 </Button>
                 <Button
+                  size="sm"
                   onClick={() =>
                     action(async () => {
                       const v = await api(`documents/${preview.id}/text`);
@@ -1291,7 +1462,7 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
                 </Button>
               </div>
               {text && (
-                <pre className="max-w-full max-h-[420px] overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted p-4 text-xs">
+                <pre className="max-h-[420px] max-w-full overflow-auto whitespace-pre-wrap break-words rounded-xl bg-muted p-4 text-xs">
                   {text}
                 </pre>
               )}
@@ -1299,6 +1470,6 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
           )}
         </>
       )}
-    </>
+    </div>
   );
 }

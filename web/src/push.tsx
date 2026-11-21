@@ -1,9 +1,20 @@
 import { useEffect, useState } from "react";
+import { useLocation } from "react-router";
+import { Bell, BellRing, Send } from "lucide-react";
 import type { Row } from "./api";
 import { api, date } from "./api";
-import { useLocation } from "react-router";
 import { useAPI } from "./realtime";
+import { CheckboxField } from "./components/forms";
 import { Button } from "./components/ui/button";
+import { Badge } from "./components/ui/badge";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "./components/ui/card";
+
 type Handle = { id: string; token: string };
 function handle(): Handle | null {
   try {
@@ -30,6 +41,7 @@ async function manage(method: string, body?: unknown, suffix = "") {
   if (!res.ok) throw Error("订阅操作失败，请检查服务连接");
   return res.status === 204 ? null : res.json();
 }
+
 export function PushSettings({ members }: { members: Row[] }) {
   const [config, setConfig] = useState<{
       enabled: boolean;
@@ -39,6 +51,7 @@ export function PushSettings({ members }: { members: Row[] }) {
     [active, setActive] = useState(!!handle()),
     [message, setMessage] = useState(""),
     [busy, setBusy] = useState(false);
+
   useEffect(() => {
     void api("push/config")
       .then(setConfig)
@@ -51,6 +64,7 @@ export function PushSettings({ members }: { members: Row[] }) {
           setMessage(e.message);
         });
   }, []);
+
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
     try {
@@ -61,6 +75,7 @@ export function PushSettings({ members }: { members: Row[] }) {
       setBusy(false);
     }
   };
+
   const enable = async () => {
     if (!config?.enabled) throw Error("服务端尚未配置推送");
     if (!("PushManager" in window) || !("Notification" in window))
@@ -97,84 +112,144 @@ export function PushSettings({ members }: { members: Row[] }) {
       throw e;
     }
   };
+
+  const statusText =
+    config && !config.enabled ? "服务端尚未启用推送。" : message;
+
   return (
-    <section className="rounded-xl border p-4 space-y-3">
-      <h2>测量通知</h2>
-      <p>仅通知新设备测量，显示姓名和读数。每台手机独立选择关注成员。</p>
-      <div className="flex flex-wrap gap-4">
-        {members.map((m) => (
-          <label key={m.id}>
-            <input
-              type="checkbox"
-              checked={selected.includes(m.id)}
-              onChange={(e) =>
-                setSelected((old) =>
-                  e.target.checked
-                    ? [...old, m.id]
-                    : old.filter((id) => id !== m.id),
-                )
-              }
-            />{" "}
-            {m.name}
-          </label>
-        ))}
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {!active ? (
-          <Button
-            disabled={busy || !config?.enabled}
-            onClick={() => void run(enable)}
+    <Card className="health-card gap-4 py-5">
+      <CardHeader className="px-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
+              <Bell className="size-4" />
+            </span>
+            <div className="space-y-0.5">
+              <CardTitle className="text-base">测量通知</CardTitle>
+              <CardDescription className="text-xs">
+                仅通知新设备测量，显示姓名和读数。每台手机独立选择关注成员。
+              </CardDescription>
+            </div>
+          </div>
+          <Badge
+            variant={active ? "secondary" : "outline"}
+            className={
+              active
+                ? "rounded-full bg-emerald-50 text-emerald-700"
+                : "rounded-full text-muted-foreground"
+            }
           >
-            开启通知
-          </Button>
-        ) : (
-          <>
+            {active ? "已开启" : "未开启"}
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4 px-5">
+        <div className="flex flex-wrap gap-2.5">
+          {members.map((m) => {
+            const checked = selected.includes(m.id);
+            return (
+              <label
+                key={m.id}
+                className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm transition-colors ${
+                  checked
+                    ? "border-primary/40 bg-primary/5 font-medium text-foreground"
+                    : "border-border bg-muted/35 text-muted-foreground hover:bg-muted/60"
+                }`}
+              >
+                <CheckboxField
+                  checked={checked}
+                  onChange={(e) =>
+                    setSelected((old) =>
+                      e.target.checked
+                        ? [...old, m.id]
+                        : old.filter((id) => id !== m.id),
+                    )
+                  }
+                />
+                <span>{m.name}</span>
+              </label>
+            );
+          })}
+          {!members.length && (
+            <p className="text-xs text-muted-foreground">
+              请先在「家庭成员」中添加成员后再订阅通知。
+            </p>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {!active ? (
             <Button
-              disabled={busy}
-              onClick={() =>
-                void run(async () => {
-                  await manage("PATCH", { member_ids: selected });
-                  setMessage("关注成员已保存");
-                })
-              }
+              size="sm"
+              className="rounded-xl"
+              disabled={busy || !config?.enabled}
+              onClick={() => void run(enable)}
             >
-              保存关注成员
+              <BellRing className="size-3.5" />
+              开启通知
             </Button>
-            <Button
-              disabled={busy}
-              onClick={() =>
-                void run(async () => {
-                  await manage("POST", undefined, "/test");
-                  setMessage("测试通知已发送");
-                })
-              }
-            >
-              发送测试通知
-            </Button>
-            <Button
-              disabled={busy}
-              onClick={() =>
-                void run(async () => {
-                  await manage("DELETE");
-                  const registration = await navigator.serviceWorker.ready;
-                  await (
-                    await registration.pushManager.getSubscription()
-                  )?.unsubscribe();
-                  localStorage.removeItem("eir-push");
-                  setActive(false);
-                  setMessage("已关闭通知");
-                })
-              }
-            >
-              关闭通知
-            </Button>
-          </>
+          ) : (
+            <>
+              <Button
+                size="sm"
+                className="rounded-xl"
+                disabled={busy}
+                onClick={() =>
+                  void run(async () => {
+                    await manage("PATCH", { member_ids: selected });
+                    setMessage("关注成员已保存");
+                  })
+                }
+              >
+                保存关注成员
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="rounded-xl"
+                disabled={busy}
+                onClick={() =>
+                  void run(async () => {
+                    await manage("POST", undefined, "/test");
+                    setMessage("测试通知已发送");
+                  })
+                }
+              >
+                <Send className="size-3.5" />
+                发送测试通知
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="rounded-xl text-destructive hover:text-destructive"
+                disabled={busy}
+                onClick={() =>
+                  void run(async () => {
+                    await manage("DELETE");
+                    const registration = await navigator.serviceWorker.ready;
+                    await (
+                      await registration.pushManager.getSubscription()
+                    )?.unsubscribe();
+                    localStorage.removeItem("eir-push");
+                    setActive(false);
+                    setMessage("已关闭通知");
+                  })
+                }
+              >
+                关闭通知
+              </Button>
+            </>
+          )}
+        </div>
+        {statusText && (
+          <p
+            role="status"
+            className="rounded-xl bg-muted/50 px-3 py-2 text-xs text-muted-foreground"
+          >
+            {statusText}
+          </p>
         )}
-      </div>
-      <p role="status">
-        {config && !config.enabled ? "服务端尚未启用推送。" : message}
-      </p>
-    </section>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -193,25 +268,40 @@ export function FocusMeasurement() {
     return null;
   const row = data.data.items[0];
   return (
-    <section className="rounded-xl border border-primary p-4" role="status">
-      <h2>通知中的测量</h2>
-      {row ? (
-        <p>
-          {row.member_name} ·{" "}
-          {row.kind === "body_composition"
-            ? `${row.weight_kg} kg${row.body_fat_status === "estimated" ? ` · 估算体脂 ${row.body_fat_pct}%` : ""}`
-            : `${row.systolic}/${row.diastolic} mmHg · ${row.pulse} bpm`}{" "}
-          · {date(row.measured_at)}
-        </p>
-      ) : (
-        <p>
-          {data.loading
-            ? "正在读取…"
-            : data.error
-              ? "暂时无法连接服务"
-              : "记录已删除或归属已调整"}
-        </p>
-      )}
-    </section>
+    <Card
+      className="health-card gap-2 border-blue-200/90 bg-blue-50/70 py-4"
+      role="status"
+    >
+      <CardHeader className="flex flex-row items-center gap-2.5 px-4 sm:px-5">
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-600">
+          <BellRing className="size-4" />
+        </span>
+        <CardTitle className="text-sm font-semibold text-blue-950">
+          通知中的测量
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="px-4 text-sm text-blue-950 sm:px-5">
+        {row ? (
+          <p className="font-medium tabular-nums">
+            {row.member_name} ·{" "}
+            {row.kind === "body_composition"
+              ? `${row.weight_kg} kg${row.body_fat_status === "estimated" ? ` · 估算体脂 ${row.body_fat_pct}%` : ""}`
+              : `${row.systolic}/${row.diastolic} mmHg · ${row.pulse} bpm`}{" "}
+            ·{" "}
+            <span className="font-normal text-blue-800/80">
+              {date(row.measured_at)}
+            </span>
+          </p>
+        ) : (
+          <p className="text-blue-900/80">
+            {data.loading
+              ? "正在读取…"
+              : data.error
+                ? "暂时无法连接服务"
+                : "记录已删除或归属已调整"}
+          </p>
+        )}
+      </CardContent>
+    </Card>
   );
 }

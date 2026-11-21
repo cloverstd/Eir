@@ -3,6 +3,7 @@ import { VitePWA } from "vite-plugin-pwa";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { fileURLToPath, URL } from "node:url";
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, ".", "");
   const target = env.EIR_DEV_API || "http://localhost:8080";
@@ -20,11 +21,15 @@ export default defineConfig(({ mode }) => {
           id: "/",
           name: "Eir · 家庭健康",
           short_name: "Eir",
+          description: "家庭血压、体重、体脂与健康档案管理空间",
+          lang: "zh-CN",
           start_url: "/",
           scope: "/",
           display: "standalone",
-          theme_color: "#0c6657",
-          background_color: "#ffffff",
+          orientation: "any",
+          theme_color: "#f5f6f8",
+          background_color: "#f5f6f8",
+          categories: ["health", "medical", "lifestyle"],
           icons: [
             {
               src: "/icon-anime-v1-192.png",
@@ -36,7 +41,39 @@ export default defineConfig(({ mode }) => {
               src: "/icon-anime-v1-512.png",
               sizes: "512x512",
               type: "image/png",
-              purpose: "any maskable",
+              purpose: "any",
+            },
+            {
+              src: "/icon-anime-v1-512.png",
+              sizes: "512x512",
+              type: "image/png",
+              purpose: "maskable",
+            },
+          ],
+          shortcuts: [
+            {
+              name: "家庭概览",
+              short_name: "概览",
+              url: "/",
+              icons: [{ src: "/icon-anime-v1-192.png", sizes: "192x192" }],
+            },
+            {
+              name: "血压数据",
+              short_name: "血压",
+              url: "/data",
+              icons: [{ src: "/icon-anime-v1-192.png", sizes: "192x192" }],
+            },
+            {
+              name: "体重与体脂",
+              short_name: "体重",
+              url: "/body",
+              icons: [{ src: "/icon-anime-v1-192.png", sizes: "192x192" }],
+            },
+            {
+              name: "离线数据",
+              short_name: "离线",
+              url: "/offline",
+              icons: [{ src: "/icon-anime-v1-192.png", sizes: "192x192" }],
             },
           ],
         },

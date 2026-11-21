@@ -9,6 +9,7 @@ import {
   LoaderCircle,
   RotateCcw,
   Ruler,
+  SlidersHorizontal,
 } from "lucide-react";
 import { exportLocalMeasurements } from "./offlineData";
 import { api, date, number, isOffline } from "./api";
@@ -34,6 +35,7 @@ import {
   zoomRange,
 } from "./chartDomain";
 import type { Metric, TimeRange } from "./chartDomain";
+import { metricTheme } from "./lib/metricTheme";
 import { TimeSeriesChart } from "./components/TimeSeriesChart";
 import { InfoTip } from "./components/InfoTip";
 import { SelectField, CheckboxField, Empty } from "./components/forms";
@@ -110,6 +112,7 @@ const deviceMetrics: Metric[] = [
   "pulse",
 ];
 const allMetrics: Metric[] = [...deviceMetrics, "waist"];
+
 function LatestCards({
   items,
   metrics,
@@ -123,40 +126,45 @@ function LatestCards({
 }) {
   return (
     <div
-      className={`grid grid-cols-2 gap-3 ${metrics.length === 5 ? "xl:grid-cols-5" : ""}`}
+      className={`grid grid-cols-2 gap-3 sm:gap-3.5 ${metrics.length === 5 ? "xl:grid-cols-5" : "sm:grid-cols-2"}`}
     >
       {metrics.map((metric) => {
         const row = items.find((item) => item.metric === metric),
-          Icon = icons[metric];
+          Icon = icons[metric],
+          theme = metricTheme[metric];
         return (
           <Card
             key={metric}
-            className={`gap-3 py-4 shadow-none ${metric === "waist" ? "col-span-2 xl:col-span-1" : ""}`}
+            className={`health-card gap-3 py-4 transition-shadow hover:shadow-md ${metric === "waist" ? "col-span-2 xl:col-span-1" : ""}`}
           >
             <CardHeader className="flex flex-row items-center justify-between gap-2 px-4">
-              <CardDescription className="text-xs font-medium">
+              <CardDescription className="text-xs font-medium text-muted-foreground">
                 {titles[metric]}
               </CardDescription>
-              <Icon className="size-4 text-muted-foreground" />
+              <span
+                className={`flex size-8 shrink-0 items-center justify-center rounded-xl ${theme.iconBg} ${theme.iconText}`}
+              >
+                <Icon className="size-4" />
+              </span>
             </CardHeader>
-            <CardContent className="space-y-2 px-4">
+            <CardContent className="space-y-1.5 px-4">
               {loading.includes(metric) ? (
-                <Skeleton className="h-9 w-24" />
+                <Skeleton className="h-9 w-24 rounded-lg" />
               ) : (
-                <div className="flex flex-wrap items-baseline gap-x-2">
-                  <span className="text-2xl font-semibold tracking-tight tabular-nums sm:text-3xl">
+                <div className="flex flex-wrap items-baseline gap-x-1.5">
+                  <span className="text-2xl font-bold tracking-tight tabular-nums text-foreground sm:text-[1.75rem]">
                     {row
                       ? metric === "blood_pressure"
                         ? `${number(row.value, 0)}/${number(row.value_secondary, 0)}`
                         : number(row.value, metric === "weight" ? 2 : 1)
                       : "—"}
                   </span>
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-xs font-medium text-muted-foreground">
                     {units[metric]}
                   </span>
                 </div>
               )}
-              <p className="text-xs leading-5 text-muted-foreground">
+              <p className="truncate text-[11px] leading-5 text-muted-foreground">
                 {row
                   ? date(row.measured_at)
                   : loading.includes(metric)
@@ -172,6 +180,7 @@ function LatestCards({
     </div>
   );
 }
+
 function MetricPlot({
   metric,
   rows,
@@ -193,6 +202,8 @@ function MetricPlot({
   domain?: TimeRange;
   error?: string;
 }) {
+  const Icon = icons[metric];
+  const theme = metricTheme[metric];
   const series = useMemo(
     () =>
       familyMembers
@@ -237,30 +248,39 @@ function MetricPlot({
         <p>成员资料不足或不在成人参考适用范围，暂不显示参考带。</p>
       )}
       {metric === "body_fat" && (
-        <p>估算体脂率实线对应左轴（%），BMI 虚线对应右轴（kg/m²）。缺测保持断点。</p>
+        <p>
+          估算体脂率实线对应左轴（%），BMI 虚线对应右轴（kg/m²）。缺测保持断点。
+        </p>
       )}
     </>
   );
   return (
     <Card
-      className={`min-w-0 gap-2 py-5 shadow-none ${metric === "waist" ? "xl:col-span-2" : ""}`}
+      className={`health-card min-w-0 gap-2 py-4 sm:py-5 ${metric === "waist" ? "xl:col-span-2" : ""}`}
     >
-      <CardHeader className="flex flex-row items-center justify-between gap-2 px-5">
-        <div className="space-y-1.5">
-          <CardTitle className="text-sm font-medium">
-            {titles[metric]}趋势
-          </CardTitle>
-          {!overview && (
-            <CardDescription className="text-xs">
-              {member.name} · {units[metric]} · 原始测量
-            </CardDescription>
-          )}
+      <CardHeader className="flex flex-row items-center justify-between gap-2 px-4 sm:px-5">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span
+            className={`flex size-8 shrink-0 items-center justify-center rounded-xl ${theme.iconBg} ${theme.iconText}`}
+          >
+            <Icon className="size-4" />
+          </span>
+          <div className="min-w-0 space-y-0.5">
+            <CardTitle className="text-sm font-semibold tracking-tight">
+              {titles[metric]}趋势
+            </CardTitle>
+            {!overview && (
+              <CardDescription className="truncate text-xs">
+                {member.name} · {units[metric]} · 原始测量
+              </CardDescription>
+            )}
+          </div>
         </div>
         {overview && (
           <InfoTip label={`${titles[metric]}参考说明`}>{referenceHint}</InfoTip>
         )}
       </CardHeader>
-      <CardContent className="min-w-0 px-2 sm:px-4">
+      <CardContent className="min-w-0 px-1.5 sm:px-4">
         {series.some((s) => s.data.some((p) => p[1] !== null)) ? (
           <TimeSeriesChart
             series={series}
@@ -272,6 +292,7 @@ function MetricPlot({
             domain={domain}
             showExtrema={metric === "weight"}
             rightAxis={metric === "body_fat" ? bmiAxis : undefined}
+            accentColor={familyMembers ? undefined : theme.chartColor}
           />
         ) : (
           <div className="p-3">
@@ -284,13 +305,14 @@ function MetricPlot({
         )}
       </CardContent>
       {!overview && (
-        <div className="space-y-1 px-5 text-xs leading-5 text-muted-foreground">
+        <div className="space-y-1 border-t border-border/50 px-4 pt-3 text-xs leading-5 text-muted-foreground sm:px-5">
           {referenceHint}
         </div>
       )}
     </Card>
   );
 }
+
 export function MeasurementsPage({
   mode,
   members,
@@ -445,8 +467,7 @@ export function MeasurementsPage({
       : ["blood_pressure", "pulse"];
   const memberIDs = new Set(members.map((m) => m.id));
   const plotRows = useMemo(
-    () =>
-      overview ? curves.data.concat(waistCurves.data) : curves.data,
+    () => (overview ? curves.data.concat(waistCurves.data) : curves.data),
     [overview, curves.data, waistCurves.data],
   );
   const latestRows = overview
@@ -481,7 +502,7 @@ export function MeasurementsPage({
       period={range ? "custom" : period}
       from={range ? shanghaiDay(range.from) : from}
       to={range ? shanghaiDay(range.to) : to}
-      className={overview ? "w-40 sm:w-64 sm:min-w-0" : undefined}
+      className={overview ? "w-full min-w-36 sm:w-52 sm:min-w-0" : undefined}
       onChange={(value) => {
         setPeriod(value.period);
         setFrom(value.from);
@@ -489,26 +510,14 @@ export function MeasurementsPage({
       }}
     />
   );
+
+  const resolveDeviceLabel = (row: Row) => {
+    const found = devices.find((d) => d.id === row.device_id);
+    return found ? deviceLabel(found) : row.device_name;
+  };
+
   return (
-    <div className="space-y-6">
-      {overview && (
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          {member && members.some((m) => m.id === member) && (
-            <Button variant="outline" asChild>
-              <Link to={`/members/${member}/metrics?kind=waist`}>
-                查看腰围历史
-              </Link>
-            </Button>
-          )}
-          <Button
-            disabled={busy || !members.length}
-            onClick={() => setRecordingWaist(true)}
-          >
-            <Ruler className="size-4" />
-            记录腰围
-          </Button>
-        </div>
-      )}
+    <div className="space-y-5">
       {overview && recordingWaist && (
         <WaistRecordDialog
           members={members}
@@ -519,7 +528,7 @@ export function MeasurementsPage({
         />
       )}
       {overview && (
-        <div className="flex min-w-0 items-center justify-between gap-3">
+        <div className="health-card flex flex-col gap-3 border bg-card p-3 sm:p-3.5 lg:flex-row lg:items-center lg:justify-between">
           <Tabs
             className="min-w-0 flex-1"
             value={member || "all"}
@@ -528,21 +537,44 @@ export function MeasurementsPage({
               setUnassigned(false);
             }}
           >
-            <div className="max-w-full overflow-x-auto">
-              <TabsList className="h-10 w-max">
-                <TabsTrigger value="all" className="px-5">
+            <div className="no-scrollbar max-w-full overflow-x-auto">
+              <TabsList className="h-10 w-max rounded-xl bg-muted/80 p-1">
+                <TabsTrigger
+                  value="all"
+                  className="rounded-lg px-4 text-xs sm:px-5 sm:text-sm"
+                >
                   全员
                 </TabsTrigger>
                 {members.map((m) => (
-                  <TabsTrigger key={m.id} value={m.id} className="px-5">
+                  <TabsTrigger
+                    key={m.id}
+                    value={m.id}
+                    className="rounded-lg px-4 text-xs sm:px-5 sm:text-sm"
+                  >
                     {m.name}
                   </TabsTrigger>
                 ))}
               </TabsList>
             </div>
           </Tabs>
-          <div className="flex shrink-0 items-center gap-1">
-            {datePicker}
+          <div className="flex flex-wrap items-center gap-2 lg:shrink-0">
+            <div className="min-w-36 flex-1 sm:flex-none">{datePicker}</div>
+            {member && members.some((m) => m.id === member) && (
+              <Button variant="outline" size="sm" className="h-9" asChild>
+                <Link to={`/members/${member}/metrics?kind=waist`}>
+                  查看腰围历史
+                </Link>
+              </Button>
+            )}
+            <Button
+              size="sm"
+              className="h-9 shrink-0 rounded-xl shadow-xs"
+              disabled={busy || !members.length}
+              onClick={() => setRecordingWaist(true)}
+            >
+              <Ruler className="size-4" />
+              记录腰围
+            </Button>
             <InfoTip label="概览说明">
               <p>
                 全员按指标对比各成员曲线；选择成员后，读数卡显示最新设备测量与手动腰围记录及实际测量时间，不受图表时间范围影响。
@@ -557,116 +589,131 @@ export function MeasurementsPage({
                 </p>
               )}
             </InfoTip>
-            <span className="flex size-4 shrink-0 items-center justify-center">
-              {((curves.loading && !curves.loaded) ||
-                (waistCurves.loading && !waistCurves.loaded)) && (
+            {((curves.loading && !curves.loaded) ||
+              (waistCurves.loading && !waistCurves.loaded)) && (
+              <span className="flex size-5 shrink-0 items-center justify-center">
                 <LoaderCircle
-                  className="size-4 animate-spin text-muted-foreground"
+                  className="size-4 animate-spin text-primary"
                   role="status"
                   aria-label="正在加载完整历史"
                 />
-              )}
-            </span>
+              </span>
+            )}
           </div>
         </div>
       )}
       {(!overview || range) && (
-        <div className="flex flex-wrap items-end gap-3">
+        <div
+          className={
+            overview
+              ? "flex flex-wrap items-center gap-2"
+              : "health-card border bg-card p-4"
+          }
+        >
           {!overview && (
-            <>
-              <Label className="grid w-full gap-2 text-xs sm:w-44">
-                家庭成员
-                <SelectField
-                  value={member}
-                  onChange={(e) => {
-                    setMember(e.target.value);
-                    setUnassigned(false);
-                  }}
-                >
-                  <option value="">全部成员</option>
-                  {members.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name}
-                    </option>
-                  ))}
-                </SelectField>
-              </Label>
-              <Label className="grid w-full gap-2 text-xs sm:w-48">
-                {body ? "体脂秤" : "血压计"}
-                <SelectField
-                  value={device}
-                  onChange={(e) => setDevice(e.target.value)}
-                >
-                  <option value="">{body ? "全部体脂秤" : "全部血压计"}</option>
-                  {devices
-                    .filter((d) =>
-                      body
-                        ? d.profile === scaleProfile
-                        : d.profile !== scaleProfile,
-                    )
-                    .map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {deviceLabel(d)}
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                <SlidersHorizontal className="size-3.5" />
+                筛选条件
+              </span>
+              <span
+                className="text-xs text-muted-foreground"
+                aria-live="polite"
+              >
+                {curves.loading
+                  ? "正在加载完整历史…"
+                  : `${curves.data.length} 个测量点`}
+              </span>
+            </div>
+          )}
+          <div className="grid grid-cols-2 items-end gap-3 sm:flex sm:flex-wrap">
+            {!overview && (
+              <>
+                <Label className="grid min-w-0 gap-1.5 text-xs text-muted-foreground sm:w-44">
+                  家庭成员
+                  <SelectField
+                    value={member}
+                    onChange={(e) => {
+                      setMember(e.target.value);
+                      setUnassigned(false);
+                    }}
+                  >
+                    <option value="">全部成员</option>
+                    {members.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}
                       </option>
                     ))}
-                </SelectField>
+                  </SelectField>
+                </Label>
+                <Label className="grid min-w-0 gap-1.5 text-xs text-muted-foreground sm:w-48">
+                  {body ? "体脂秤" : "血压计"}
+                  <SelectField
+                    value={device}
+                    onChange={(e) => setDevice(e.target.value)}
+                  >
+                    <option value="">{body ? "全部体脂秤" : "全部血压计"}</option>
+                    {devices
+                      .filter((d) =>
+                        body
+                          ? d.profile === scaleProfile
+                          : d.profile !== scaleProfile,
+                      )
+                      .map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {deviceLabel(d)}
+                        </option>
+                      ))}
+                  </SelectField>
+                </Label>
+              </>
+            )}
+            {!overview && (
+              <Label className="col-span-2 grid min-w-0 gap-1.5 text-xs text-muted-foreground sm:w-auto">
+                时间范围
+                {datePicker}
               </Label>
-            </>
-          )}
-          {!overview && (
-            <Label className="grid w-full gap-2 text-xs sm:w-auto">
-              时间范围
-              {datePicker}
-            </Label>
-          )}
-          {!overview && (
-            <Label className="flex h-9 items-center gap-2">
-              <CheckboxField
-                type="checkbox"
-                checked={unassigned}
-                onChange={(e) => {
-                  setUnassigned(e.target.checked);
-                  if (e.target.checked) {
-                    setMember("");
-                    setPeriod("all");
-                  }
+            )}
+            {!overview && (
+              <Label className="col-span-2 flex h-9 items-center gap-2 text-sm text-foreground sm:col-span-1">
+                <CheckboxField
+                  type="checkbox"
+                  checked={unassigned}
+                  onChange={(e) => {
+                    setUnassigned(e.target.checked);
+                    if (e.target.checked) {
+                      setMember("");
+                      setPeriod("all");
+                    }
+                  }}
+                />
+                待归属
+              </Label>
+            )}
+            {range && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9"
+                onClick={() => {
+                  setZoomFrom("");
+                  setZoomTo("");
                 }}
-              />
-              待归属
-            </Label>
-          )}
-          {range && (
-            <Button
-              variant="outline"
-              onClick={() => {
-                setZoomFrom("");
-                setZoomTo("");
-              }}
-            >
-              <RotateCcw className="size-3.5" />
-              恢复完整范围
-            </Button>
-          )}
-          {!overview && (
-            <span
-              className="pb-2 text-xs text-muted-foreground sm:ml-auto"
-              aria-live="polite"
-            >
-              {curves.loading
-                ? "正在加载完整历史…"
-                : `${curves.data.length} 个测量点`}
-            </span>
+              >
+                <RotateCcw className="size-3.5" />
+                恢复完整范围
+              </Button>
+            )}
+          </div>
+          {range && !overview && (
+            <p className="mt-3 border-t border-border/60 pt-2.5 text-xs text-muted-foreground">
+              当前视野：{date(range.from)} — {date(range.to)} · 测量记录及导出已联动
+            </p>
           )}
         </div>
       )}
-      {range && !overview && (
-        <p className="text-xs text-muted-foreground">
-          当前视野：{date(range.from)} — {date(range.to)}
-          {!overview && " · 测量记录及导出已联动"}
-        </p>
-      )}
       {error && (
-        <Alert variant="destructive">
+        <Alert variant="destructive" className="rounded-2xl bg-card">
           <AlertDescription>
             数据暂时无法更新，保留上次成功读取的结果。{error}
           </AlertDescription>
@@ -689,11 +736,10 @@ export function MeasurementsPage({
       ) : familyOverview ? (
         <div className="grid min-w-0 gap-4 xl:grid-cols-2">
           {metrics.map((metric) =>
-            curveResource(metric).loading &&
-            !curveResource(metric).loaded ? (
+            curveResource(metric).loading && !curveResource(metric).loaded ? (
               <Skeleton
                 key={metric}
-                className={`h-96 ${metric === "waist" ? "xl:col-span-2" : ""}`}
+                className={`h-96 rounded-2xl ${metric === "waist" ? "xl:col-span-2" : ""}`}
               />
             ) : (
               <MetricPlot
@@ -715,14 +761,14 @@ export function MeasurementsPage({
         displayGroups.map((m) => (
           <section key={m.id || "unassigned"} className="space-y-4">
             {(!overview || !member) && (
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2.5">
                 <h2 className="text-lg font-semibold tracking-tight">
                   {m.name}
                 </h2>
                 {!overview && (
                   <Badge
-                    variant="outline"
-                    className="font-normal text-muted-foreground"
+                    variant="secondary"
+                    className="rounded-full font-normal text-muted-foreground"
                   >
                     最新设备测量
                   </Badge>
@@ -741,7 +787,7 @@ export function MeasurementsPage({
                 !curveResource(metric).loaded ? (
                   <Skeleton
                     key={metric}
-                    className={`h-96 ${metric === "waist" ? "xl:col-span-2" : ""}`}
+                    className={`h-96 rounded-2xl ${metric === "waist" ? "xl:col-span-2" : ""}`}
                   />
                 ) : (
                   <MetricPlot
@@ -762,18 +808,18 @@ export function MeasurementsPage({
         ))
       )}
       {!overview && (
-        <Card className="gap-4 py-5 shadow-none">
-          <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 px-5">
-            <div className="space-y-1">
+        <Card className="health-card gap-4 py-5">
+          <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 px-4 sm:px-5">
+            <div className="space-y-0.5">
               <CardTitle className="text-base">
                 {body ? "称重记录" : "测量记录"}
               </CardTitle>
-              <CardDescription>
+              <CardDescription className="text-xs">
                 {table.data.total} 条 · 保留原始测量
                 {table.loading && " · 更新中…"}
               </CardDescription>
             </div>
-            <Button variant="outline" size="sm" asChild>
+            <Button variant="outline" size="sm" asChild className="rounded-xl">
               <a
                 onClick={(e) => {
                   if (isOffline()) {
@@ -793,105 +839,186 @@ export function MeasurementsPage({
           </CardHeader>
           <CardContent className="px-0">
             {!table.data.items.length ? (
-              <div className="px-5">
+              <div className="px-4 sm:px-5">
                 <Empty>
                   {table.loading ? "正在读取测量记录…" : "暂无符合条件的记录"}
                 </Empty>
               </div>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="pl-5">测量时间</TableHead>
-                    <TableHead>成员 / {body ? "体脂秤" : "血压计"}</TableHead>
-                    {body ? (
-                      <>
-                        <TableHead>体重</TableHead>
-                        <TableHead>估算体脂率</TableHead>
-                      </>
-                    ) : (
-                      <>
-                        <TableHead>血压</TableHead>
-                        <TableHead>脉搏</TableHead>
-                      </>
-                    )}
-                    <TableHead>备注</TableHead>
-                    <TableHead className="pr-5 text-right">操作</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
+              <>
+                <div className="divide-y divide-border/70 md:hidden">
                   {table.data.items.map((row) => (
-                    <TableRow key={row.id}>
-                      <TableCell className="pl-5">
-                        <span className="block">{date(row.measured_at)}</span>
-                        <small className="block text-xs text-muted-foreground">
-                          收到于 {date(row.received_at)}
-                        </small>
-                      </TableCell>
-                      <TableCell>
-                        {row.member_name || "待归属"}
-                        <small className="block text-xs text-muted-foreground">
-                          {devices.find((d) => d.id === row.device_id)
-                            ? deviceLabel(
-                                devices.find((d) => d.id === row.device_id)!,
-                              )
-                            : row.device_name}
-                        </small>
-                      </TableCell>
-                      {body ? (
-                        <>
-                          <TableCell className="font-medium tabular-nums">
-                            {number(row.weight_kg, 2)} kg
-                            {row.weight_valid === false && (
-                              <small className="block text-xs text-muted-foreground">
-                                未锁定 · 不计入趋势
-                              </small>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {bodyFatValue(row) === null
-                              ? "—"
-                              : `${number(row.body_fat_pct)} %`}
-                            <small className="block text-xs text-muted-foreground">
-                              {bodyFatStatus(row.body_fat_status)}
-                            </small>
-                          </TableCell>
-                        </>
-                      ) : (
-                        <>
-                          <TableCell className="font-medium tabular-nums">
-                            {row.systolic}/{row.diastolic}{" "}
-                            <small className="text-muted-foreground">
-                              mmHg
-                            </small>
-                          </TableCell>
-                          <TableCell>
-                            {row.pulse}{" "}
-                            <small className="text-muted-foreground">
-                              次/分
-                            </small>
-                          </TableCell>
-                        </>
-                      )}
-                      <TableCell className="max-w-48 truncate">
-                        {row.notes || "—"}
-                      </TableCell>
-                      <TableCell className="pr-5 text-right">
+                    <div
+                      key={row.id}
+                      className="flex flex-col gap-2 px-4 py-3.5"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          {body ? (
+                            <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
+                              <span className="text-lg font-bold tracking-tight tabular-nums text-foreground">
+                                {number(row.weight_kg, 2)}
+                                <span className="ml-1 text-xs font-normal text-muted-foreground">
+                                  kg
+                                </span>
+                              </span>
+                              <span className="text-sm font-medium tabular-nums text-teal-700">
+                                {bodyFatValue(row) === null
+                                  ? "体脂 —"
+                                  : `体脂 ${number(row.body_fat_pct)}%`}
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
+                              <span className="text-lg font-bold tracking-tight tabular-nums text-foreground">
+                                {row.systolic}/{row.diastolic}
+                                <span className="ml-1 text-xs font-normal text-muted-foreground">
+                                  mmHg
+                                </span>
+                              </span>
+                              <span className="text-sm font-medium tabular-nums text-orange-600">
+                                {row.pulse} 次/分
+                              </span>
+                            </div>
+                          )}
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            {date(row.measured_at)}
+                          </p>
+                        </div>
                         <Button
-                          variant="ghost"
+                          variant="outline"
                           size="sm"
+                          className="h-8 shrink-0 rounded-lg px-2.5 text-xs"
                           onClick={() => setEditing(row)}
                         >
                           详情 / 编辑
                         </Button>
-                      </TableCell>
-                    </TableRow>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                        <Badge
+                          variant={row.member_name ? "secondary" : "outline"}
+                          className="rounded-md font-normal"
+                        >
+                          {row.member_name || "待归属"}
+                        </Badge>
+                        <span className="truncate text-muted-foreground">
+                          {resolveDeviceLabel(row)}
+                        </span>
+                        {body && row.weight_valid === false && (
+                          <Badge
+                            variant="outline"
+                            className="border-amber-200 bg-amber-50 text-amber-700"
+                          >
+                            未锁定 · 不计入趋势
+                          </Badge>
+                        )}
+                      </div>
+                      {row.notes && (
+                        <p className="line-clamp-2 rounded-lg bg-muted/50 px-2.5 py-1.5 text-xs text-muted-foreground">
+                          {row.notes}
+                        </p>
+                      )}
+                    </div>
                   ))}
-                </TableBody>
-              </Table>
+                </div>
+                <div className="hidden md:block">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/35 hover:bg-muted/35">
+                        <TableHead className="pl-5">测量时间</TableHead>
+                        <TableHead>
+                          成员 / {body ? "体脂秤" : "血压计"}
+                        </TableHead>
+                        {body ? (
+                          <>
+                            <TableHead>体重</TableHead>
+                            <TableHead>估算体脂率</TableHead>
+                          </>
+                        ) : (
+                          <>
+                            <TableHead>血压</TableHead>
+                            <TableHead>脉搏</TableHead>
+                          </>
+                        )}
+                        <TableHead>备注</TableHead>
+                        <TableHead className="pr-5 text-right">操作</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {table.data.items.map((row) => (
+                        <TableRow key={row.id}>
+                          <TableCell className="pl-5">
+                            <span className="block font-medium">
+                              {date(row.measured_at)}
+                            </span>
+                            <small className="block text-xs text-muted-foreground">
+                              收到于 {date(row.received_at)}
+                            </small>
+                          </TableCell>
+                          <TableCell>
+                            <span className="font-medium">
+                              {row.member_name || "待归属"}
+                            </span>
+                            <small className="block text-xs text-muted-foreground">
+                              {resolveDeviceLabel(row)}
+                            </small>
+                          </TableCell>
+                          {body ? (
+                            <>
+                              <TableCell className="font-semibold tabular-nums">
+                                {number(row.weight_kg, 2)} kg
+                                {row.weight_valid === false && (
+                                  <small className="block font-normal text-xs text-amber-600">
+                                    未锁定 · 不计入趋势
+                                  </small>
+                                )}
+                              </TableCell>
+                              <TableCell className="tabular-nums">
+                                {bodyFatValue(row) === null
+                                  ? "—"
+                                  : `${number(row.body_fat_pct)} %`}
+                                <small className="block text-xs text-muted-foreground">
+                                  {bodyFatStatus(row.body_fat_status)}
+                                </small>
+                              </TableCell>
+                            </>
+                          ) : (
+                            <>
+                              <TableCell className="font-semibold tabular-nums">
+                                {row.systolic}/{row.diastolic}{" "}
+                                <small className="font-normal text-muted-foreground">
+                                  mmHg
+                                </small>
+                              </TableCell>
+                              <TableCell className="tabular-nums">
+                                {row.pulse}{" "}
+                                <small className="text-muted-foreground">
+                                  次/分
+                                </small>
+                              </TableCell>
+                            </>
+                          )}
+                          <TableCell className="max-w-48 truncate text-muted-foreground">
+                            {row.notes || "—"}
+                          </TableCell>
+                          <TableCell className="pr-5 text-right">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setEditing(row)}
+                            >
+                              详情 / 编辑
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </>
             )}
           </CardContent>
-          <Pagination className="justify-end px-5">
+          <Pagination className="justify-end px-4 sm:px-5">
             <PaginationContent>
               <PaginationItem>
                 <Button
@@ -926,27 +1053,27 @@ export function MeasurementsPage({
           if (!open) setEditing(null);
         }}
       >
-        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
+        <DialogContent className="max-h-[90dvh] overflow-y-auto rounded-2xl sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>测量详情与归属</DialogTitle>
             <DialogDescription>
-              {editing && devices.find((d) => d.id === editing.device_id)
-                ? deviceLabel(devices.find((d) => d.id === editing!.device_id)!)
-                : editing?.device_name}{" "}
-              · {date(editing?.measured_at)}
+              {editing && resolveDeviceLabel(editing)} ·{" "}
+              {date(editing?.measured_at)}
             </DialogDescription>
           </DialogHeader>
           {editing && (
             <>
-              <p className="text-lg font-semibold tabular-nums">
-                {body
-                  ? `${number(editing.weight_kg, 2)} kg · ${bodyFatValue(editing) === null ? "体脂缺测" : `估算体脂 ${number(editing.body_fat_pct)} %`}`
-                  : `${editing.systolic}/${editing.diastolic} mmHg · ${editing.pulse} 次/分`}
-              </p>
+              <div className="rounded-xl border bg-muted/40 px-4 py-3">
+                <p className="text-lg font-bold tracking-tight tabular-nums text-foreground">
+                  {body
+                    ? `${number(editing.weight_kg, 2)} kg · ${bodyFatValue(editing) === null ? "体脂缺测" : `估算体脂 ${number(editing.body_fat_pct)} %`}`
+                    : `${editing.systolic}/${editing.diastolic} mmHg · ${editing.pulse} 次/分`}
+                </p>
+              </div>
               {body && (
-                <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-xs">
+                <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 rounded-xl border border-border/70 bg-background/60 p-3.5 text-xs">
                   <dt className="text-muted-foreground">原始 ADC</dt>
-                  <dd>
+                  <dd className="font-mono">
                     {editing.raw_adcs?.join(" / ") ||
                       (isOffline() ? "原始诊断数据未离线保存" : "未取得")}
                   </dd>
@@ -1009,9 +1136,18 @@ export function MeasurementsPage({
                 <p className="text-xs text-muted-foreground">
                   原始测量值保持留存。调整称重归属会按所选成员资料重新计算体脂。
                 </p>
-                <Button disabled={busy} type="submit">
-                  保存更正
-                </Button>
+                <div className="flex justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setEditing(null)}
+                  >
+                    取消
+                  </Button>
+                  <Button disabled={busy} type="submit">
+                    保存更正
+                  </Button>
+                </div>
               </form>
             </>
           )}
