@@ -75,10 +75,13 @@
   html {
     background-color: var(--background);
     -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+    touch-action: pan-x pan-y;
   }
   body {
     @apply m-0 min-h-dvh bg-background font-sans text-foreground antialiased;
     overscroll-behavior-y: contain;
+    touch-action: pan-x pan-y;
   }
   button:not(:disabled),
   [role="button"]:not([aria-disabled="true"]) {
@@ -100,15 +103,4 @@
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
-}
-
-.safe-top {
-  padding-top: env(safe-area-inset-top);
-}
-.safe-bottom {
-  padding-bottom: env(safe-area-inset-bottom);
-}
-.safe-x {
-  padding-left: env(safe-area-inset-left);
-  padding-right: env(safe-area-inset-right);
 }

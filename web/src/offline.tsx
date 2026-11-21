@@ -559,7 +559,7 @@ export function OfflinePage() {
                     </Badge>
                   )}
                 </CardHeader>
-                <CardContent className="min-w-0 px-1.5 sm:px-4">
+                <CardContent className="min-w-0 px-2.5 sm:px-4">
                   <TimeSeriesChart
                     label={metricNames[k]}
                     unit={points[0].unit}

@@ -75,7 +75,7 @@ export function MobileBottomNav({ page }: { page: string }) {
     <>
       <nav
         aria-label="底部主导航"
-        className="safe-bottom fixed inset-x-0 bottom-0 z-30 border-t border-border/80 bg-card/90 backdrop-blur-xl md:hidden"
+        className="fixed inset-x-0 bottom-0 z-30 border-t border-border/80 bg-card/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl md:hidden"
       >
         <div className="mx-auto grid h-16 max-w-lg grid-cols-5 items-center px-1.5">
           {primaryTabs.map((item) => {
@@ -136,7 +136,7 @@ export function MobileBottomNav({ page }: { page: string }) {
       <Sheet open={moreOpen} onOpenChange={setMoreOpen}>
         <SheetContent
           side="bottom"
-          className="safe-bottom rounded-t-3xl border-t px-4 pt-3 pb-6"
+          className="rounded-t-3xl border-t px-4 pt-3 pb-[calc(1.5rem+env(safe-area-inset-bottom))]"
         >
           <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-muted-foreground/25" />
           <SheetHeader className="px-1 pb-2 text-left">

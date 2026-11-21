@@ -313,6 +313,34 @@ function App() {
       window.removeEventListener("eir-connection-changed", refresh);
     };
   }, []);
+  useEffect(() => {
+    // Prevent pinch-to-zoom on iOS Safari / standalone PWA where viewport
+    // user-scalable=no is ignored, while keeping single-finger scroll intact.
+    const preventGesture = (event: Event) => event.preventDefault();
+    const preventMultiTouch = (event: TouchEvent) => {
+      if (event.touches.length > 1) event.preventDefault();
+    };
+    document.addEventListener("gesturestart", preventGesture, {
+      passive: false,
+    });
+    document.addEventListener("gesturechange", preventGesture, {
+      passive: false,
+    });
+    document.addEventListener("gestureend", preventGesture, { passive: false });
+    document.addEventListener("touchstart", preventMultiTouch, {
+      passive: false,
+    });
+    document.addEventListener("touchmove", preventMultiTouch, {
+      passive: false,
+    });
+    return () => {
+      document.removeEventListener("gesturestart", preventGesture);
+      document.removeEventListener("gesturechange", preventGesture);
+      document.removeEventListener("gestureend", preventGesture);
+      document.removeEventListener("touchstart", preventMultiTouch);
+      document.removeEventListener("touchmove", preventMultiTouch);
+    };
+  }, []);
   const devices = useAPI<Row[]>(
     ["data", "body"].includes(page) ? "devices" : null,
     [],
@@ -354,8 +382,8 @@ function App() {
     <SidebarProvider>
       <Navigation page={page} />
       <SidebarInset className="min-w-0 bg-background">
-        <header className="safe-top sticky top-0 z-20 shrink-0 border-b border-border/70 bg-background/85 backdrop-blur-xl">
-          <div className="flex h-13 items-center justify-between gap-3 px-4 sm:px-6 md:h-14">
+        <header className="sticky top-0 z-20 shrink-0 border-b border-border/70 bg-background/85 pt-[env(safe-area-inset-top)] backdrop-blur-xl">
+          <div className="flex h-13 items-center justify-between gap-3 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] sm:pl-[max(1.5rem,env(safe-area-inset-left))] sm:pr-[max(1.5rem,env(safe-area-inset-right))] md:h-14">
             <div className="flex min-w-0 items-center gap-2.5">
               <div className="hidden items-center gap-2.5 md:flex">
                 <SidebarTrigger aria-label="展开或收起导航" />
@@ -393,7 +421,7 @@ function App() {
           </div>
         </header>
 
-        <main className="safe-x mx-auto w-full max-w-[1600px] min-w-0 flex-1 space-y-5 px-4 pt-4 pb-24 sm:px-6 sm:pt-6 md:pb-8 lg:px-8">
+        <main className="mx-auto w-full max-w-[1600px] min-w-0 flex-1 space-y-5 pt-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] sm:pt-6 sm:pl-[max(1.5rem,env(safe-area-inset-left))] sm:pr-[max(1.5rem,env(safe-area-inset-right))] md:pb-8 lg:pl-[max(2rem,env(safe-area-inset-left))] lg:pr-[max(2rem,env(safe-area-inset-right))]">
           <div className="space-y-1">
             <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-[1.65rem]">
               {current?.label || "页面未找到"}

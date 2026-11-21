@@ -280,7 +280,7 @@ function MetricPlot({
           <InfoTip label={`${titles[metric]}参考说明`}>{referenceHint}</InfoTip>
         )}
       </CardHeader>
-      <CardContent className="min-w-0 px-1.5 sm:px-4">
+      <CardContent className="min-w-0 px-2.5 sm:px-4">
         {series.some((s) => s.data.some((p) => p[1] !== null)) ? (
           <TimeSeriesChart
             series={series}
