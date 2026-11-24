@@ -8,10 +8,12 @@ import {
   MarkAreaComponent,
   MarkLineComponent,
   TooltipComponent,
+  VisualMapPiecewiseComponent,
 } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
 import { useIsMobile } from "../hooks/use-mobile";
 import type { ChartSeries, Reference, TimeRange } from "../chartDomain";
+import { weekendAndHolidayPieces } from "../dateDomain";
 
 echarts.use([
   LineChart,
@@ -20,9 +22,11 @@ echarts.use([
   TooltipComponent,
   MarkAreaComponent,
   MarkLineComponent,
+  VisualMapPiecewiseComponent,
   CanvasRenderer,
 ]);
 const defaultColors = ["#2563eb", "#f43f5e", "#0d9488", "#7c3aed", "#f97316"];
+const calendarHighlightColor = "#f97316";
 const time = (value: number) =>
   new Date(value).toLocaleString("zh-CN", {
     timeZone: "Asia/Shanghai",
@@ -52,6 +56,7 @@ type Props = {
   range?: TimeRange;
   domain?: TimeRange;
   showExtrema?: boolean;
+  highlightWeekendsAndHolidays?: boolean;
   rightAxis?: { name: string; unit: string };
   accentColor?: string;
 };
@@ -65,6 +70,7 @@ export function TimeSeriesChart({
   range,
   domain,
   showExtrema,
+  highlightWeekendsAndHolidays,
   rightAxis,
   accentColor,
 }: Props) {
@@ -118,6 +124,15 @@ export function TimeSeriesChart({
     const rightSeriesIds = new Set(
       plottedSeries.filter(({ s }) => s.axis === "right").map(({ s }) => s.id),
     );
+    const seriesColors = plottedSeries.map(
+      ({ s }, index) => s.color || palette[index % palette.length],
+    );
+    const calendarPieces = highlightWeekendsAndHolidays
+      ? weekendAndHolidayPieces(
+          Math.max(bounds.from, first),
+          Math.min(bounds.to, last),
+        )
+      : [];
     const showRightAxis = Boolean(rightAxis && rightSeriesIds.size);
     const singleSeriesFill = plottedSeries.length === 1;
     const extremaSeries = (): LineSeriesOption => {
@@ -192,6 +207,18 @@ export function TimeSeriesChart({
           icon: "roundRect",
           textStyle: { color: "#64748b", fontSize: 11 },
         },
+        visualMap: calendarPieces.length
+          ? plottedSeries.map(({ s }, index) => ({
+              id: `calendar-${s.id}`,
+              type: "piecewise",
+              show: false,
+              seriesId: s.id,
+              dimension: 0,
+              pieces: calendarPieces,
+              inRange: { color: calendarHighlightColor },
+              outOfRange: { color: seriesColors[index] },
+            }))
+          : [],
         tooltip: {
           trigger: "axis",
           confine: true,
@@ -298,7 +325,7 @@ export function TimeSeriesChart({
         ],
         series: plottedSeries
           .map<LineSeriesOption>(({ s, data }, index) => {
-            const lineColor = s.color || palette[index % palette.length];
+            const lineColor = seriesColors[index];
             return {
               id: s.id,
               name: s.name,
@@ -371,7 +398,7 @@ export function TimeSeriesChart({
           })
           .concat(showExtrema ? [extremaSeries()] : []),
       },
-      { replaceMerge: ["series", "yAxis"], silent: true },
+      { replaceMerge: ["series", "yAxis", "visualMap"], silent: true },
     );
     if (!showExtrema) return;
     const onLegendChange = (event: unknown) => {
@@ -390,6 +417,7 @@ export function TimeSeriesChart({
     memberName,
     reference,
     showExtrema,
+    highlightWeekendsAndHolidays,
     rightAxis,
     accentColor,
     mobile,
@@ -399,11 +427,23 @@ export function TimeSeriesChart({
     domain?.to,
   ]);
   return (
-    <div
-      ref={ref}
-      className="h-68 w-full min-w-0 sm:h-80"
-      role="img"
-      aria-label={label}
-    />
+    <>
+      <div
+        ref={ref}
+        className="h-68 w-full min-w-0 sm:h-80"
+        role="img"
+        aria-label={label}
+      />
+      {highlightWeekendsAndHolidays && (
+        <p className="mt-1 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
+          <span
+            aria-hidden="true"
+            className="h-0.5 w-3.5 rounded-full"
+            style={{ backgroundColor: calendarHighlightColor }}
+          />
+          周末及中国节假日
+        </p>
+      )}
+    </>
   );
 }

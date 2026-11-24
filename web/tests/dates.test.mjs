@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {calendarDate, calendarValue, monthsBefore, rangeBounds, rangePresets} from "../src/dateDomain.ts";
+import {calendarDate, calendarValue, monthsBefore, rangeBounds, rangePresets, weekendAndHolidayPieces} from "../src/dateDomain.ts";
 import {measurementQuery} from "../src/domain.ts";
 import {healthQuery} from "../src/healthDomain.ts";
 import {normalizeSearch} from "../src/routingDomain.ts";
@@ -50,6 +50,26 @@ test("calendar selections retain their chosen date in different browser timezone
     }
   }finally{if(timezone===undefined)delete process.env.TZ;else process.env.TZ=timezone;}
   assert.equal(calendarDate("2026-02-30"),undefined);
+});
+test("weekend and China public holiday highlights switch at Shanghai midnight", () => {
+  const midnight = (day) => Date.parse(`${day}T00:00:00+08:00`);
+  assert.deepEqual(
+    weekendAndHolidayPieces(midnight("2026-09-18"), midnight("2026-09-29")),
+    [
+      // September 20 is a makeup workday and still falls on Sunday.
+      {gte: midnight("2026-09-19"), lt: midnight("2026-09-21")},
+      {gte: midnight("2026-09-25"), lt: midnight("2026-09-28")},
+    ],
+  );
+  const dragonBoat = midnight("2027-06-09");
+  assert.deepEqual(weekendAndHolidayPieces(dragonBoat - 120000, dragonBoat - 1), []);
+  assert.deepEqual(weekendAndHolidayPieces(dragonBoat - 120000, dragonBoat), [
+    {gte: dragonBoat, lt: midnight("2027-06-10")},
+  ]);
+  assert.deepEqual(
+    weekendAndHolidayPieces(midnight("2023-12-29"), midnight("2024-01-02")),
+    [{gte: midnight("2023-12-30"), lt: midnight("2024-01-02")}],
+  );
 });
 test("scale labels use stable assigned numbers, independently of list order",()=>{
   const a={id:"a",name:"卧室秤",profile:scaleProfile,scale_number:1};

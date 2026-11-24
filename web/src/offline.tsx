@@ -563,6 +563,7 @@ export function OfflinePage() {
                   <TimeSeriesChart
                     label={metricNames[k]}
                     unit={points[0].unit}
+                    highlightWeekendsAndHolidays={k === "weight"}
                     series={(snapshot?.members ?? [])
                       .filter((m) => !member || m.id === member)
                       .flatMap((m) => {

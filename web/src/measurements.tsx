@@ -291,6 +291,7 @@ function MetricPlot({
             range={range}
             domain={domain}
             showExtrema={metric === "weight"}
+            highlightWeekendsAndHolidays={metric === "weight"}
             rightAxis={metric === "body_fat" ? bmiAxis : undefined}
             accentColor={familyMembers ? undefined : theme.chartColor}
           />

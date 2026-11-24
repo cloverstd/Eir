@@ -1,3 +1,5 @@
+import { chinaPublicHolidays } from "./chinaPublicHolidays.ts";
+
 export const rangePresets = [
   { value: "7", label: "最近 7 天" },
   { value: "week", label: "本周" },
@@ -8,6 +10,31 @@ export const rangePresets = [
   { value: "365", label: "最近 1 年" },
   { value: "all", label: "全部时间" },
 ];
+
+export function weekendAndHolidayPieces(from: number, to: number) {
+  if (from > to) return [];
+  const dayMs = 86400000;
+  const shanghaiOffset = 8 * 3600000;
+  const firstDay = Math.floor((from + shanghaiOffset) / dayMs) * dayMs;
+  const pieces: { gte: number; lt: number }[] = [];
+
+  for (let day = firstDay; day <= to + shanghaiOffset; day += dayMs) {
+    const date = new Date(day);
+    const weekday = date.getUTCDay();
+    if (
+      weekday === 0 ||
+      weekday === 6 ||
+      chinaPublicHolidays.has(date.toISOString().slice(0, 10))
+    ) {
+      const start = day - shanghaiOffset;
+      const last = pieces.at(-1);
+      if (last?.lt === start) last.lt += dayMs;
+      else pieces.push({ gte: start, lt: start + dayMs });
+    }
+  }
+  return pieces;
+}
+
 export function shanghaiDay(value = Date.now()): string {
   return new Intl.DateTimeFormat("sv-SE", {
     timeZone: "Asia/Shanghai",

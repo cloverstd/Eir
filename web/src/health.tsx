@@ -153,7 +153,7 @@ function BasicForm({
   );
 }
 
-function MetricChart({ rows }: { rows: Row[] }) {
+function MetricChart({ rows, group }: { rows: Row[]; group: string }) {
   const times = [...new Set(rows.map((r) => r.time))].sort();
   const groups = [
     ...new Set(
@@ -201,6 +201,11 @@ function MetricChart({ rows }: { rows: Row[] }) {
       series={series}
       unit={rows[0]?.unit || ""}
       label="身体指标历史趋势"
+      highlightWeekendsAndHolidays={
+        group === "day" &&
+        rows.length > 0 &&
+        rows.every((row) => row.kind === "weight")
+      }
     />
   );
 }
@@ -1084,7 +1089,7 @@ export function HealthProfiles({ members, refresh, api, action, busy }: Props) {
               BMI
               根据体重和当时已记录的身高计算；无历史身高时使用记录当时的成员身高，保存快照后不随资料修改变化。估算值会单独标注。
             </p>
-            <MetricChart rows={stats} />
+            <MetricChart rows={stats} group={group} />
             {statsTotal > 200 && (
               <div className="flex flex-wrap items-center justify-end gap-3 py-2 text-xs text-muted-foreground">
                 <Button
