@@ -427,23 +427,11 @@ export function TimeSeriesChart({
     domain?.to,
   ]);
   return (
-    <>
-      <div
-        ref={ref}
-        className="h-68 w-full min-w-0 sm:h-80"
-        role="img"
-        aria-label={label}
-      />
-      {highlightWeekendsAndHolidays && (
-        <p className="mt-1 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
-          <span
-            aria-hidden="true"
-            className="h-0.5 w-3.5 rounded-full"
-            style={{ backgroundColor: calendarHighlightColor }}
-          />
-          周末及中国节假日
-        </p>
-      )}
-    </>
+    <div
+      ref={ref}
+      className="h-68 w-full min-w-0 sm:h-80"
+      role="img"
+      aria-label={label}
+    />
   );
 }
